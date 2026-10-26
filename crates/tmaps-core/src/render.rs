@@ -1,11 +1,13 @@
 //! Draws vector tiles as braille dots and colored cells, without a terminal dependency.
 
 mod canvas;
+mod label;
 mod scene;
 mod style;
 mod view;
 
 pub use self::canvas::{Canvas, Cell};
+pub use self::label::{Label, LabelClass, cursor_cell};
 pub use self::scene::{PreparedTile, render};
 pub use self::style::Class;
 pub use self::view::{MAX_ZOOM, View, VisibleTile};

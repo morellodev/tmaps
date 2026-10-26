@@ -28,17 +28,22 @@ pub struct Loader {
     source: Arc<TileSource>,
     permits: Arc<Semaphore>,
     wanted: Arc<Mutex<HashSet<TileId>>>,
+    lang: Arc<str>,
     sender: mpsc::UnboundedSender<Message>,
 }
 
 impl Loader {
-    pub fn new(source: TileSource, sender: mpsc::UnboundedSender<Message>) -> Self {
-        Self {
+    /// `lang` is the BCP 47 tag for the names on the labels. The receiver gets the results.
+    pub fn new(source: TileSource, lang: &str) -> (Self, mpsc::UnboundedReceiver<Message>) {
+        let (sender, receiver) = mpsc::unbounded_channel();
+        let loader = Self {
             source: Arc::new(source),
             permits: Arc::new(Semaphore::new(MAX_REQUESTS)),
             wanted: Arc::default(),
+            lang: Arc::from(lang),
             sender,
-        }
+        };
+        (loader, receiver)
     }
 
     pub fn load_source(&self) {
@@ -67,6 +72,7 @@ impl Loader {
         let source = Arc::clone(&self.source);
         let permits = Arc::clone(&self.permits);
         let wanted = Arc::clone(&self.wanted);
+        let lang = Arc::clone(&self.lang);
         let sender = self.sender.clone();
         tokio::spawn(async move {
             let Ok(_permit) = permits.acquire_owned().await else {
@@ -77,7 +83,7 @@ impl Loader {
                 .unwrap_or_else(PoisonError::into_inner)
                 .contains(&id);
             let message = if is_wanted {
-                Message::Tile(id, prepare(&source, id).await)
+                Message::Tile(id, prepare(&source, id, lang).await)
             } else {
                 Message::Skipped(id)
             };
@@ -86,10 +92,14 @@ impl Loader {
     }
 }
 
-async fn prepare(source: &TileSource, id: TileId) -> Result<Box<PreparedTile>, String> {
+async fn prepare(
+    source: &TileSource,
+    id: TileId,
+    lang: Arc<str>,
+) -> Result<Box<PreparedTile>, String> {
     let body = source.tile(id).await.map_err(|error| error.to_string())?;
     tokio::task::spawn_blocking(move || {
-        Tile::decode(&body).map(|tile| Box::new(PreparedTile::new(&tile)))
+        Tile::decode(&body).map(|tile| Box::new(PreparedTile::new(&tile, &lang)))
     })
     .await
     .map_err(|error| error.to_string())?

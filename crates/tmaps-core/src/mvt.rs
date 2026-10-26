@@ -259,6 +259,36 @@ mod proto {
 }
 
 #[cfg(test)]
+impl Layer {
+    /// A layer with one feature for each `(geometry, properties)` pair.
+    pub(crate) fn with_features(
+        name: &str,
+        extent: u32,
+        features: Vec<(Geometry, Vec<(&str, Value)>)>,
+    ) -> Self {
+        let mut layer = Self {
+            name: name.to_owned(),
+            extent,
+            features: Vec::new(),
+            keys: Vec::new(),
+            values: Vec::new(),
+        };
+        for (geometry, properties) in features {
+            let mut tags = Vec::new();
+            for (key, value) in properties {
+                tags.extend(
+                    [layer.keys.len(), layer.values.len()].map(|i| u32::try_from(i).unwrap()),
+                );
+                layer.keys.push(key.to_owned());
+                layer.values.push(value);
+            }
+            layer.features.push(Feature { geometry, tags });
+        }
+        layer
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
 

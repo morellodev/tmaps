@@ -1,6 +1,7 @@
 ---
 source: crates/tmaps-core/tests/render.rs
-expression: "snapshot(MILAN_Z5, 5.0)"
+assertion_line: 113
+expression: "snapshot(MILAN_Z5, 5.0, \"it-IT\")"
 ---
 ⠁⠈      ⢸⡀        ⠘⣷           ⠉⠉⠒⠢⡄       ⣰⢠⠃        ⠠⡌   ⣀⣀⣀⡴⠚⢠⢽⣙⡹⡤⢤⣾⣛⣼⡟⢻⢛⣶⡉⠢⣦⠦⣇⣠⣷⣨⠇ ⣯⡾⡷⢿⣟⣹⡿⣾⣷⣰⠁ ⠙
 ⣀⣠⠤⠤⠤⠦⠤⣀⣀⡇        ⠰⣇               ⠈⠳⡄⢀⣀⣀⡠⠴⣲⣼         ⣞⠥⠤⠒⠋⠁    ⢛⣺⠇⢙⣒⣲⣍⣹⢜⣙⣺⣿⡥⠿⠉⢁⡀⣺⠿⡇⢬⣓⣀⢘⡇⡇⢸⢭⡟⢓⢿⣿⠁   
@@ -83,3 +84,24 @@ ggggH       g gggggHgwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwgwwwwwwwwwwwwwwwwwwwwwww
 ggggH     gggggggggHHwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww  wwwwww
 BBggHrH     ggggHHHHHwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww  wwwwww
 gBBBHBH ggggg  H HHHHwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww      Hwwwwww
+
+ 7,  4 Country: Francia
+ 6, 75 Country: Svizzera
+30, 67 Country: Monaco
+10, 52 City: Ginevra
+16, 87 City: Milano
+ 1, 80 City: Zurigo
+14, 38 City: Lione
+34, 43 City: Marsiglia
+ 4, 68 City: Berna
+20, 70 City: Torino
+25, 84 City: Genova
+31, 66 City: Nizza
+28, 42 State: Provenza-Alpi-Costa Azzurra
+24, 82 State: Liguria
+19, 72 State: Piemonte
+14, 64 State: Valle d'Aosta
+18, 29 State: Alvernia-Rodano-Alpi
+ 3, 31 State: Borgogna-Franca Contea
+31,  8 State: Occitania
+32, 83 Water: Mar Ligure

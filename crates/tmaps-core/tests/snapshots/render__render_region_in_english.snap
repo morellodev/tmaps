@@ -1,0 +1,107 @@
+---
+source: crates/tmaps-core/tests/render.rs
+assertion_line: 118
+expression: "snapshot(MILAN_Z5, 5.0, \"en-US\")"
+---
+⠁⠈      ⢸⡀        ⠘⣷           ⠉⠉⠒⠢⡄       ⣰⢠⠃        ⠠⡌   ⣀⣀⣀⡴⠚⢠⢽⣙⡹⡤⢤⣾⣛⣼⡟⢻⢛⣶⡉⠢⣦⠦⣇⣠⣷⣨⠇ ⣯⡾⡷⢿⣟⣹⡿⣾⣷⣰⠁ ⠙
+⣀⣠⠤⠤⠤⠦⠤⣀⣀⡇        ⠰⣇               ⠈⠳⡄⢀⣀⣀⡠⠴⣲⣼         ⣞⠥⠤⠒⠋⠁    ⢛⣺⠇⢙⣒⣲⣍⣹⢜⣙⣺⣿⡥⠿⠉⢁⡀⣺⠿⡇⢬⣓⣀⢘⡇⡇⢸⢭⡟⢓⢿⣿⠁   
+        ⢀⠗⢤        ⠹⣆                ⠙⠧⡀  ⢠⠓⠋⠑⢄   ⣀⡠⠴⠋⠧⠦⢄⡀     ⢀⣔⡣⠒⢻⡒⣺⣋⣤⡷⣏⠉⢗⠻⢿⣓⠋⢱⢸⣧⠼⣶⠤⢿⢿⡄⠈⠉⠉⠓⢪⢗⡞⢤⡀  
+      ⣠⠔⠉ ⠈⠦⣘⢱      ⣿⢤                 ⠺⣄⣀⣎⡀ ⣀⣠⢻⡉⠉       ⠁    ⡴⠮⡗⠒⣢⠄⢺⣖⡿⢏⡏⠉ ⢸  ⡈⣱⡤⣻⣳⣤⠜⠁ ⢠⠏⠛⣲⠒⢦⣸⣇⣿⣀⠈⠉⠑
+     ⢀⠇    ⠈⠉⢣      ⢸⢟⠧⡀                ⢀⠏ ⠈⠉⠁  ⠳⡀        ⡀⡠⠤⠊⡁⢠⡽⡞⡷⣲⡦⣄⡭⣏   ⢘⡖ ⢨⠴⣷⠿⠾⣴⣃⣀⡀⢻⡄⠈⠉⡇ ⠉⣧ ⠈⠉⣗ 
+   ⠠⣄⢼ ⠈     ⡼     ⢀⢸⢸ ⠱⠤⢄⡀             ⢸        ⡽        ⠁⡵⠔⣩⢽⣕⣿⣿⠏⡭⠛⡿ ⠹⡄  ⠺⡀⢸⢁⡔⢹⡶⣯⠘⣇⠁⠸⡝⣰⠢⠚⣉⣉⡽⠟    ⠉
+    ⡟        ⢳ ⢀⡠⠦⠖⠉⠙⢼⣄⢤⡤⣄⣵⣦       ⣀⡠⠖⠤⠒⠚⡆      ⡼        ⣀⠽⠧⢦⠓⠫⠿⣿⠁⢸⠁⠈⢧  ⢿⡀ ⢀⣉⠽⠛⠓⠚⢙⡏⢠⢞⡴⣿⠭⠒⠊⠉  ⣧      
+   ⡼         ⠈⢧⢿      ⠉⠧⣀⠉⠁⠈⢧    ⢀⡤⠃     ⢧    ⢠⠎       ⢠⠜   ⢸  ⣞⣁⠴⠯ ⢀⡟  ⠈⠙⠉⠉ ⡀  ⢀⣾⢀⣈⣪⣈⣀⡴⢤   ⣀⡎      
+  ⢀⡇ ⢀⣀⣀⢀  ⢀⡴⠒⠛⠛⢆    ⢀⣀⣠⠟⠒⠉⠉⠛⠻⣤⣤⣠⣇⣀⣀     ⣸⠒⠢⠖⣆⡎        ⡜⠁⢀⡤⢔⣛⣋⣲⠼⡟⣆⠤⢊⡇   ⢀ ⢀⠤⠞⠉⠉⡳⠉⣬⡏⠐⠒⠦⣄ ⠘⡄⢞⣹⠲⣴      
+⠴⠲⡼⠛⠓⠓⠉⠉⠉⠉⠉⠉⣶⡀⣀⠴⠜⠤⢄⣀⠔⠉  ⡀     ⢀⣧    ⠙⠦⠖⢄⢠⣟   ⢀⠟⣦⡀⢀⣀  ⢀⠔⢱⣶⡕⠊⡥⠂  ⡟⣾⠁ ⠘⣧⡤⠴⠾⠁⣉⣁⣀⣠⡤⠊⢀⡾ ⡇   ⠘⠦⡄⡿⢨⢿ ⠸⡄ ⢠⡠⠴⢦
+ ⢰⣁⢄⣀⣀⡀ ⣀⣀⣀⣀⡸⠛⢧     ⠙⡄  ⠈  ⢄⣀⡀⣏⡹⣀  ⢠⠛⠛⠛⢷⣻⠋⠓⠒⠒⠺⡄⠈⠓⢫⠋⠓⠒⢋⡤⣾⢙⣵     ⣨⠋⢧⣀⠜⢀⣠⠴⠛⠉⠉⠉⠑⠉⠐⢎⢁⡀⠈⢇⡀    ⢣⣧⢮⠎  ⠈⠑⠉  ⠘
+ ⡸    ⠈⠉⠁ ⠈   ⠈⡇     ⢯⢤⡔⠆    ⠈⠃⠉⢹⠉⠛⠉   ⢈⡇     ⣇⣀⠴⠟⠊⠱⣄⣿⠿⡟⠋⢻⣄⡀⡀  ⠪⡤⠈⣳⠚⠁        ⡠⠜ ⡹  ⠱⢤⣔⣉⢵⠃⡴⠋⢀⡤⠒⠒⠒ ⠐⠊ 
+ ⡇             ⣱    ⣀⡗         ⢀⢿⡀     ⢸      ⡝     ⡎⠁ ⢳⠔⠉⠈⠉⠉⡇  ⠋⢧⡀    ⣠⣄⡀ ⢠⠤⠇  ⠧⢤  ⣀⠧⠯⣼⣾⠁ ⢾        
+⢸            ⣠⠼⠃  ⣠⠜ ⣼ ⣀⣀⣠⠤⠤⢄⣠⠤⣠⣣⣣⠤⡤⠤⠤⢤⡸⡑⢲⣀⣀⡠⠜⢁⡀   ⢰⠁ ⢠⠟⠁    ⠈⠚⢒⣆⠴⢳⣴⠴⠓⠚⠁ ⠈⠑⡫     ⠈⠹⣼   ⣳⣟⡆ ⠈⣣⡆      
+⠘⡄           ⠱⣄ ⢠⠎  ⢠⢿⠛         ⠈⣷     ⠉⢳⣾⣻⢿⡍⠋⠉⠈⠢⡀ ⡸ ⡴⠁  ⠠⢀⡄   ⣿⠁⠳⣤⡉⣀⣤⣄⠤⠤⡄ ⠻⡄     ⢰⣫⣀⡀⡞ ⢹⠃ ⡸⠁ ⢀⣒⣀⡴  
+ ⠙⣦          ⢀⡼⠔⠚    ⠘⣆          ⢻⡄     ⣺⣻⠋⠛⠢⣄⡀  ⠉⠙ ⢠⡏   ⢠⠞⡆   ⠈⠻⡦ ⠉⠁  ⢀⡀⠣⣀⣈⠇    ⢀⠞⠋⢻⣯⠷⢖⣻⠙⣾⣀⣠⢀⡸⠿⠿⠫⢤⡀
+   ⡇     ⢀⣠⠤⠔⠁⢹       ⢈⡇         ⠨⡷⣄⡀⣠⠖⠊⢈⡇    ⠉⡟⠉⠉⠉⠉⠉⠙⣤⠔⠊⢱ ⠹⡴⠂   ⠸⣀⣄⡤⠴⠊⠉⠉⠛⠉⡆ ⠚⠙⠒ ⢸⣀⣀⣌⣯⣦⠤⢽⣶⡟⣿⣭⡧⠤⠤⢤⠤⠴⠞
+   ⢳   ⢀⡴⠋  ⢰⠦⠷        ⣇⡀        ⣠⣣⠕⠋⠁  ⣿     ⣀⣉⢦⡀   ⢀⠇  ⢯        ⠈⣶       ⡗⠒⠦⣴⡋⠉⠁⣣⣐⡊⣤⠧  ⢳⠯⣷⣺⠳⠤⢄⡀ ⠖⠂
+   ⡸⠒⠉⠙⠉  ⢀⡰⠋         ⣔⠁⠁      ⢀⡰⡗⠃    ⠸⢹⡀      ⣰⠚⣄ ⣠⠏   ⠈⠢⣄     ⢀⣨⡇      ⣴⠃⣀⣎⣀⣈⠑⠲⣿⡇⠙⠃  ⢠⡇⡀⠑⠙⠺⡃     
+⠒⠒⠺⡋⠃     ⢨⠇         ⢰⠃       ⣸⠁⡠⠃      ⠸⣹   ⣀⠴⠊⠁ ⢸⡟⠁   ⢀⣄⣄⢈⣩⣭⡧⠦⢶⡫⠭⠤⣄⣀⣀ ⣰⢮⡾⠏⠉   ⠉⠙⣺⢯⡄   ⣎⣘⠭⠤⢄⣀⣨⣶⣄⣀⣠⣦
+  ⡤⡗⠲⡄ ⢀⣀⣐⡍          ⠳⡄ ⡀     ⡾⠋         ⣯⣠⠷⠖⠁    ⡞⠁    ⠸⣡⡉⠛ ⠸⢽⠲⠋     ⠁⢙⢧⣎⡀       ⠈⡆⠷⠶⠞⣿⡥⠶⠚⠉⡽⠉⠉⠉⠻⢟⣻⠉
+ ⢀⣇⡇ ⠈⠛⠁⠁⢸⡂  ⠑ ⢀⡴⢳⣠  ⡴⡿⡋⠹⡄⢠⢤  ⢱⡀        ⢀⡿⠃      ⠐⠃    ⢀⣀⡨⡇   ⠘⢆⣀⣀   ⢤⠔⠃⢠⠟⡍⠉⠉⠢⠴⡾⠒⠒⠒⣻⠗⠒⣺⠁⢣⡄ ⠸⡅     ⠈⠑
+⣰⠏ ⢧      ⡽   ⢀⡞  ⠘⡆⣸⠁ ⡗ ⠙⠉⠈⠙⠦⡀⠈⠒⠞      ⣼⠃          ⣤⠴⠋⠁         ⢸⡀   ⢀⠎⠁ ⡇  ⢠⠞⠁   ⠘⢤⠊⢳  ⠑⢧⢰⡋       
+⠉  ⡼      ⠹⡦⠲⠤⠏    ⠳⠋ ⠠⡃     ⠈⡇        ⢀⣷         ⡦⠶⠁           ⢀⡎⠛⠉⠒⠒⠋   ⡳⠓⠚⠁      ⢸ ⠈⣷⢲⣄⢸⣛⠁⡀     ⢠
+   ⡇                  ⣸⠃      ⠈⡆       ⢸⡜       ⣄⡘⡇             ⣎        ⣸⣻⡀   ⣠⢄⣠⠤⠼⠻⣷⡟⡿ ⢈⠥ ⠉⢙⡆  ⢀⣀⡇
+   ⡇           ⡄   ⢀⡀⡤⠇        ⠘⡆  ⢀⢀⡀ ⣷⠁⣰⠒⣦   ⢰⣛⡈   ⡰⠊         ⣞⠂     ⢠⠚ ⢰⠓⠲⡤⣤⣗⣀⡁ ⣀⠴⠛⠒⠻⠦⠽⣄⣀ ⠛⠚⠲⣠⠎⣎⠹
+   ⣇         ⡔⠒⠁    ⢨⠇         ⠈⠉⠙⠾⠙⠛⠙⠺⣿⢳⠼⠞⠓⢾⣀⡀ ⠈⠙⢧  ⡇          ⠈⢳⣀          ⢸⠏ ⢈⣱⠏⠁       ⠈⠙⠦⢄⣀⣈⡒⡌⡆
+  ⣠⠏        ⡜⠁      ⡞           ⢀      ⢻⣧⡀   ⠈⠉⠳⣀⠟⠿  ⠸⡄            ⠉⠢⢤⢤⠤⠶⣦⠤⢄⣠⡾⠃⣠⠋                ⠭⣿⣷
+⡄⡴⠃       ⠰⠋⠁       ⠑⠢⣀         ⠘⢦     ⡬⢳⣼⠴⠂         ⡼⠁                 ⢀⡞⠁   ⢸⠁                   ⠈
+⡘⡇     ⡠⠤⠒⠚           ⠘⢦          ⠓ ⡠⠖⢫⡶⠛⠹⢄         ⢠⠃             ⢠   ⡤⠋ ⣀⣄⣠⠖⠋                     
+⠘⣵ ⢀⡤⠴⠊                ⢸        ⢀⣠⠴⠛⢦⡀⣸    ⢣       ⣠⠃              ⢠⣂⡠⡴⠓⠒⠚⠉⠁                        
+⣀⣺⣷⠞⠳⠤⣀   ⣀⡆           ⠈⠙⡖⠦⠤⠤⡄⣠⠞⠉⢠  ⣼⠉⠹⡢⡤⠤⢤⡴⢅⡀  ⣰⠒⠋⠁            ⠠⣄⣀⡞⠋                               
+⢀⡼⡏⢇⡀  ⠁⠉⠉⠁              ⡇ ⣀⠔⠟⠉⠋⠉⠉⡤⠻⡁  ⢸⠑⢤   ⢻⢑⢾⣥⣀⣀⣀⣀       ⢀⣀⣠⠒⠒⠋⠈                                 
+⡼ ⠳⡀⡝⠢⢄               ⣤⣤⣾⠖⠉         ⠁  ⠈⠃ ⠙⠒⣢⠜⢷⣏ ⢳⠄  ⠉⠓⠒⠶⢒⡖⠚⠁                                       
+   ⢸⢸⠂ ⠉⠒⠤⣄⣀ ⣀       ⡠⠊⠁⠈⠙⠁                    ⠛⠓⢻⡀⣀  ⢀⠤⠒⠊                                          
+   ⠈⣧      ⣠⠉⠉⠉⠉⠉⠉⠒⡲⠋                             ⠉⠘⠦⠤⠚⠤⠤                                           
+    ⡏              ⢱                                                                                
+    ⢟              ⡨⢂                                                                               
+⡤⣄  ⠈⠑⢤         ⣀⡀⣸⣚⡉                                                                               
+ ⠈⡿⠛⡒⢢⡸        ⠉ ⠉⡜⢣⡀                                                                        ⣀      
+
+rHggggggHHggg     rH        gggHHHHH       HHH        HH   HHHHHBHHHBBBBHHHHBHHHHHHHHH HHHHHHHHHHHgB
+HHHHHHHHHHgg      rH         ggggggHHHHHHHHHH         HHHHHH   gBBHHHHHBBHHHHHHHBHHHHHHBBHBBBBHHH   
+        HHH        HH       ggggggg  HHH  HHHHH   HHHHHHHH ggggBBBBHHHHHHHBBHHHBBHHHHHHHHHHBBHHHHHgg
+      HHH HHHH      HH       gggggg    HHHHH HHHHH       H  ggBHHBHHHHHHHB B  HHHHHHBB BHHHHHHHBBHHH
+     HH    HHH      rHHH     gggggg     HH HHH  HH        HBBBBHHHHHHHHH   BBgHBHHHHHBBBBBBB HH BBB 
+gg HHH H     H     BBH Hrrr  gggggg     H        H        HBBHHHHHHHHHgHH  BBBHHHBBHHBBBBBBrrHH    B
+ggggH        H BBBBBBHHBBBrr     g HHHHHHH      H       gBHHHHHHBBHHBBg HH HHHHHBBBHHBrrrrr gH  g   
+gggH         HHB      HHHBBBr    HHH     H    HH     ggBBgg H  BHHHgBB gHHHH B  BBBHBrBBB  gHHgggg  
+ggHH BBBB  BBBBHH    HHHHHHHHHHHHHHH     HBBBHH     gggBBHHHHHHHHBBBB   B BBBBBrBBBHHHH BBHHBBggg   
+BBHBBBBBBBBBBBHHHHHHHH  H     Br    HHHHHH   HHBBBHggBBHHHBHH  BHBgBBBBBBrrrrHrBB B   HHHBHH BB BBBB
+ HHHHHH HHHHHHH     HH  H  HHHBrr  BBBBBHHHHHHHBBHHBBBHHBH     BrHBBHHHHHHHHHBBHHBBB    HHHB  BBB  B
+ H    HHH H   BB     HHHH    HHBrBBB   HH     HHHHHHHHHHHHHHH  BBHHHH        BB H  BBHHHHBBHHHHHgHHg
+ H    g        B    HH    g    rHH     H      H     HH HHHHHHH  BBB    BBB BBB  HHg BBBHHB H  gggggg
+H     g ggg gBBB  HH H HHHHHHHHHHHHHHHHHHHHHHHHr   rr HHH    HHHHBBHBBBB BBB     HHH   HHH HHH g    
+HH  gggggggggBB HHggHHH ggggg   HH     HHHHHHrrrrr r HHggHHH  gBBHHHHHHHHH BB     HHHHH HH HH HHHH  
+ HH gggggggggHHHHggggHHgggggggg  Hr     HHHHHHH  rr HHgggHHH   BBB HH  BBHHBB    HHHHHHHHHHHHHHHHHHH
+   H ggggHHHHHB gggg  HHggggggg  HHHHHHHHH    HHHHHHHHHHHH HHH  gBBBBBBBBBHH HHH HHHHHHHHHHHHHHHHHHH
+   H   HHH  BBBggggggg HH gggg   rHHHHggH     HHHHgggHH  H     gggBB       HHHHHHHHHHBBggHHHHHHHH HH
+   HHHHH  BBB  gggggggHHHggggggrrHH gg HHH      HHHgHH   HHHggg  BBB      HHHHrHHHHBBBggHHHHHHHgg   
+HHHHH     BB ggggggg HH    g  rrHH      rH   HHHHgHHH   BBBHHHHBHHHHHHH HHHHH   rrHrB   HHHrrrHHHrrH
+  BHBB BBBB   ggggg  HH B     HH   ggg   HHHHHggggHH gggBBBB BHHHg g  HHHHH       HHrrrHHHHHHHHHHHHH
+ BHH BBBBBB  H BBBB gBHHBBBB  rrggggggg rHH gggggHH  ggBBBBg  BBBB   HHHrHHHHHHHHHHHHHHHBB BB     HH
+BB Hggg   B   BB gBBBBgH BBBBBBrrrggggg HH  g gggg  BBBBggggg gggBB   rrr H  HHH   HHHH  BBBB       
+B  Hgggg  BBBBBggggBBgHH     BB ggggg  rH         BBB   ggggg ggBBrrrrr   HHHH      H HHBBBBBB     H
+   Hgggg          ggggHH   gg BBggg    rH     g BBB       gg    B        HHH   BBBBBHHBH HH BBB  BBH
+   Hggg        H   HHHH ggg  ggBB  BBB HHBBBgggBBBgg HH  gg   ggBB     HH HHHHHHHH HHHHHHHHH BBBBBHH
+   Hg        HHH  ggHH g  gggggBBBBBBBBHHBBBBBBgBBBg H   gggggggBBB g        BB HHHHwwwwwwwHHHHHHHHH
+  HH        HH     gHgggg ggggggH      HHH  gBBBBBB  HHggggg g  gggBBBBBBBBBBBBHHwwwwwwwwwwwwww  HHH
+HHH       HHH   ggggHHHgggggggg HH     HHHHHggggg    HHgggggg        gggBBB   HHwwwwwwwwwwwwwwwwwwwH
+HH     HHHH    gggggggHHg         H HHHrHHH ggggggggHHgggggggg g ggH  gBB HHHHHwwwwwwwwwwwwwwwwwwwww
+rH HHHH      ggggggggggHgg      HHHHHHrggggHgggggggHHggggggggggggggHHHHHHHHHwwwwwwwwwwwwwwwwwwwwwwww
+HHHHHHH   HHgggggggggg HHHHHHHHHHHggrHHHHHHHHH  HHHHggg gg     gHHHHHwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww
+HHHHH  HHHHggggggggggg   H HHHHHHHBrrggrHH w HHHHHHHH       HHHHHHHwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww
+H HrHHH        gggg   HHHHH wwwwwwwwrwgrrwHHHHHH HHggHHHHHHHH  wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww
+   rHH HHHHH H       HHHHHHwwwwwwwwwwwwwwwwwwwwHHHHHggHHHH    wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww
+   rH      HHHHHHHHHHgwwwwwwwwwwwwwwwwwwwwwwwwwwwwHHHHHHHggwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww
+ggggH       g gggggHgwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwgwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww wwwwwww
+ggggH     gggggggggHHwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww  wwwwww
+BBggHrH     ggggHHHHHwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww  wwwwww
+gBBBHBH ggggg  H HHHHwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww      Hwwwwww
+
+ 7,  4 Country: France
+ 6, 74 Country: Switzerland
+30, 67 Country: Monaco
+10, 52 City: Geneva
+16, 88 City: Milan
+ 1, 80 City: Zurich
+14, 38 City: Lyon
+34, 43 City: Marseille
+ 4, 68 City: Bern
+20, 71 City: Turin
+25, 85 City: Genoa
+31, 66 City: Nice
+28, 42 State: Provence-Alpes-Côte d'Azur
+24, 82 State: Liguria
+19, 72 State: Piedmont
+14, 64 State: Aosta Valley
+18, 29 State: Auvergne-Rhône-Alpes
+ 3, 31 State: Bourgogne-Franche-Comté
+31,  8 State: Occitania
+32, 82 Water: Ligurian Sea

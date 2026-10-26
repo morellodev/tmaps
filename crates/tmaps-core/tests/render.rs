@@ -8,7 +8,7 @@ use tmaps_core::tiles::{DEFAULT_MAX_ZOOM, TileId};
 const WIDTH: u16 = 100;
 const HEIGHT: u16 = 40;
 
-fn fixture(id: TileId) -> PreparedTile {
+fn fixture(id: TileId, lang: &str) -> PreparedTile {
     let path = format!(
         "{}/tests/fixtures/tiles/{}-{}-{}.pbf",
         env!("CARGO_MANIFEST_DIR"),
@@ -16,7 +16,7 @@ fn fixture(id: TileId) -> PreparedTile {
         id.x,
         id.y
     );
-    PreparedTile::new(&Tile::decode(&std::fs::read(path).unwrap()).unwrap())
+    PreparedTile::new(&Tile::decode(&std::fs::read(path).unwrap()).unwrap(), lang)
 }
 
 fn center_of(id: TileId) -> LatLon {
@@ -27,14 +27,33 @@ fn center_of(id: TileId) -> LatLon {
     LatLon::new(lat, x * 360.0 - 180.0).unwrap()
 }
 
-/// Renders the view with only the fixture tile loaded, as braille rows and then class rows.
-fn snapshot(id: TileId, zoom: f64) -> String {
-    let tile = fixture(id);
+/// Renders the view with only the fixture tile loaded: braille rows, class rows, then labels.
+fn snapshot(id: TileId, zoom: f64, lang: &str) -> String {
+    let tile = fixture(id, lang);
     let view = View::new(center_of(id), zoom);
     let canvas = render(view, WIDTH, HEIGHT, DEFAULT_MAX_ZOOM, |requested| {
         (requested == id).then_some(&tile)
     });
-    format!("{}\n\n{}", braille_rows(&canvas), class_rows(&canvas))
+    format!(
+        "{}\n\n{}\n\n{}",
+        braille_rows(&canvas),
+        class_rows(&canvas),
+        labels(&canvas)
+    )
+}
+
+fn labels(canvas: &Canvas) -> String {
+    let lines: Vec<String> = canvas
+        .labels()
+        .iter()
+        .map(|label| {
+            format!(
+                "{:>2},{:>3} {:?}: {}",
+                label.row, label.column, label.class, label.text
+            )
+        })
+        .collect();
+    lines.join("\n")
 }
 
 fn braille_rows(canvas: &Canvas) -> String {
@@ -81,15 +100,20 @@ const MILAN_Z5: TileId = TileId { z: 5, x: 16, y: 11 };
 
 #[test]
 fn render_city_streets() {
-    insta::assert_snapshot!(snapshot(MILAN_Z14, 14.0));
+    insta::assert_snapshot!(snapshot(MILAN_Z14, 14.0, "it-IT"));
 }
 
 #[test]
 fn render_overzoomed_buildings() {
-    insta::assert_snapshot!(snapshot(MILAN_Z14, 16.0));
+    insta::assert_snapshot!(snapshot(MILAN_Z14, 16.0, "it-IT"));
 }
 
 #[test]
 fn render_region() {
-    insta::assert_snapshot!(snapshot(MILAN_Z5, 5.0));
+    insta::assert_snapshot!(snapshot(MILAN_Z5, 5.0, "it-IT"));
+}
+
+#[test]
+fn render_region_in_english() {
+    insta::assert_snapshot!(snapshot(MILAN_Z5, 5.0, "en-US"));
 }

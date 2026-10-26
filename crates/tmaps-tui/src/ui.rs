@@ -6,7 +6,7 @@ use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Modifier, Style};
 use ratatui::text::Line;
 use ratatui::widgets::{Block, Clear, Paragraph, Widget};
-use tmaps_core::render::{Canvas, Class};
+use tmaps_core::render::{Canvas, Class, cursor_cell};
 
 use crate::app::App;
 use crate::palette::Palette;
@@ -53,8 +53,8 @@ impl Widget for MapWidget<'_> {
                 let Some(target) = buf.cell_mut((column, row)) else {
                     continue;
                 };
-                let symbol = match (cell.dots, cell.bg, self.palette) {
-                    (0, Some(Class::Water), Palette::Mono) => MONO_WATER,
+                let symbol = match (cell.dots, cell.bg) {
+                    (0, Some(Class::Water)) if self.palette.is_mono() => MONO_WATER,
                     _ => cell.symbol(),
                 };
                 target
@@ -69,8 +69,20 @@ impl Widget for MapWidget<'_> {
                     );
             }
         }
-        let center = (area.x + area.width / 2, area.y + area.height / 2);
-        if let Some(target) = buf.cell_mut(center) {
+        for label in self.canvas.labels() {
+            let (column, row) = (area.x + label.column, area.y + label.row);
+            if column < area.right() && row < area.bottom() {
+                buf.set_stringn(
+                    column,
+                    row,
+                    &label.text,
+                    usize::from(area.right() - column),
+                    self.palette.label(label.class),
+                );
+            }
+        }
+        let (column, row) = cursor_cell(area.width, area.height);
+        if let Some(target) = buf.cell_mut((area.x + column, area.y + row)) {
             target.set_char('+').set_style(
                 Style::new()
                     .fg(self.palette.crosshair())
@@ -144,11 +156,13 @@ mod tests {
 
     use super::*;
     use crate::loader::{Message, SourceInfo};
+    use crate::palette::{Depth, Shade};
 
     fn status_line(width: u16, app: &App) -> String {
+        let palette = Palette::new(Depth::Mono, Shade::Dark);
         let mut terminal = Terminal::new(TestBackend::new(width, 1)).unwrap();
         terminal
-            .draw(|frame| draw_status(frame, app, Palette::Mono, frame.area()))
+            .draw(|frame| draw_status(frame, app, palette, frame.area()))
             .unwrap();
         let buffer = terminal.backend().buffer();
         buffer
@@ -156,6 +170,20 @@ mod tests {
             .iter()
             .map(ratatui::buffer::Cell::symbol)
             .collect()
+    }
+
+    #[test]
+    fn crosshair_is_on_the_cursor_cell() {
+        let canvas = Canvas::new(8, 6);
+        let palette = Palette::new(Depth::Mono, Shade::Dark);
+        let area = Rect::new(0, 0, 8, 6);
+        let mut buffer = Buffer::empty(area);
+        MapWidget {
+            canvas: &canvas,
+            palette,
+        }
+        .render(area, &mut buffer);
+        assert_eq!(buffer[cursor_cell(8, 6)].symbol(), "+");
     }
 
     #[test]

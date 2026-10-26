@@ -24,6 +24,16 @@ pub enum Units {
     Imperial,
 }
 
+/// The colors of the map. `Auto` asks the terminal for its background color.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Theme {
+    #[default]
+    Auto,
+    Dark,
+    Light,
+}
+
 impl FromStr for Units {
     type Err = Error;
 
@@ -50,6 +60,7 @@ pub struct Config {
     pub units: Units,
     /// BCP 47 language tag, for example `it-IT`.
     pub lang: String,
+    pub theme: Theme,
     pub endpoints: Endpoints,
     pub places: BTreeMap<String, LatLon>,
 }
@@ -59,6 +70,7 @@ pub struct Config {
 struct ConfigFile {
     units: Option<Units>,
     lang: Option<String>,
+    theme: Theme,
     endpoints: EndpointsFile,
     places: BTreeMap<String, String>,
 }
@@ -116,6 +128,7 @@ impl Config {
         Ok(Self {
             units,
             lang,
+            theme: file.theme,
             endpoints,
             places,
         })
@@ -241,6 +254,18 @@ mod tests {
         fn picks_metric_units_for_other_regions() {
             let config = Config::parse("", Some("it-IT")).unwrap();
             assert_eq!(config.units, Units::Metric);
+        }
+
+        #[test]
+        fn theme_defaults_to_auto() {
+            let config = Config::parse("", None).unwrap();
+            assert_eq!(config.theme, Theme::Auto);
+        }
+
+        #[test]
+        fn reads_the_theme_from_the_file() {
+            let config = Config::parse("theme = \"light\"", None).unwrap();
+            assert_eq!(config.theme, Theme::Light);
         }
 
         #[test]

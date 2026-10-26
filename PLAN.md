@@ -34,7 +34,7 @@ The config file can change each endpoint. Providers are concrete types for now. 
   - `tmaps`: the binary and the CLI (clap).
 - A tokio worker pool fetches, decodes, and projects tiles. Channels send results to the UI loop. The UI never blocks.
 - MVT decoding: hand-written `prost` structs for the small `vector_tile.proto` schema. This removes `protox` and `build.rs`.
-- The renderer has no ratatui dependency, so snapshot tests can use it. It draws lines as braille dots. It fills polygons at cell resolution: a cell gets the area color when its center is inside the polygon (even-odd rule). A braille cell has one background color, so a triangulation with `earcutr` gives no better result. M3 adds labels, placed greedily with an `rstar` collision check. Geometry simplification waits until profiles show a need.
+- The renderer has no ratatui dependency, so snapshot tests can use it. It draws lines as braille dots. It fills polygons at cell resolution: a cell gets the area color when its center is inside the polygon (even-odd rule). A braille cell has one background color, so a triangulation with `earcutr` gives no better result. Labels are horizontal text: a place name centers on its point, and a road name needs a straight run of cells on one row of the road. Placement is greedy in class and rank order, and each text appears once. A screen holds about 100 labels, so the overlap check is a linear scan, not an `rstar` index. Geometry simplification waits until profiles show a need.
 - Tile fetches: HTTP 204 and 404 give an empty tile. When the network fails, an expired cached copy is better than no tile. Some servers send gzipped tiles without `Content-Encoding`, so tmaps detects gzip by its magic bytes.
 - Language and units come from the config file, then the system locale. With no usable locale (`C`, `POSIX`), the language is `en-US` and the units are metric.
 - XDG paths on all platforms (`etcetera`):
@@ -57,7 +57,7 @@ The config file can change each endpoint. Providers are concrete types for now. 
   - `?`: help. `q`: quit.
 - The route request starts when both points are set or when the mode changes.
 - The itinerary panel is on the right. Below about 100 columns, it becomes a bottom drawer. It shows the mode, a summary for each alternative, and the steps. Select a step to center the map on it.
-- Colors: truecolor with a 256-color fallback. Dark and light themes, with auto-detection and dark as default (M2 has only the dark theme). Obey `NO_COLOR`. The route uses a strong accent color. Alternatives are dimmed.
+- Colors: truecolor with a 256-color fallback. Dark and light themes. `theme = "auto"` (the default) asks the terminal for its background color with `terminal-colorsaurus` before the event reader starts. A terminal that does not answer gets the dark theme after a 1 s timeout. Obey `NO_COLOR`. The route uses a strong accent color. Alternatives are dimmed.
 - When the network fails, show cached tiles and an error in the status line. Route and search errors also go to the status line.
 
 ## CLI

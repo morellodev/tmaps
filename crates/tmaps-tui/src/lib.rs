@@ -20,7 +20,7 @@ use tmaps_core::tiles::{DEFAULT_CACHE_BYTES, DiskCache, TileSource};
 use tokio::sync::{Notify, mpsc};
 
 use crate::app::App;
-use crate::loader::Loader;
+use crate::loader::{Loader, Message};
 use crate::palette::Palette;
 
 #[derive(Debug, thiserror::Error)]
@@ -46,12 +46,21 @@ pub async fn run(config: &Config, paths: &Paths) -> Result<(), Error> {
     let source = TileSource::new(http::client()?, &config.endpoints.tilejson, cache);
     let view = saved_view::initial(&paths.state_dir, config.places.get("home").copied());
     let mut app = App::new(view);
+    let (loader, receiver) = Loader::new(source, &config.lang);
+    let palette = Palette::detect(config.theme);
 
     let mut terminal = ratatui::try_init().inspect_err(|_| ratatui::restore())?;
     let panicked = Arc::new(Notify::new());
     install_panic_hook(Arc::clone(&panicked));
     let result = match execute!(io::stdout(), EnableMouseCapture) {
-        Ok(()) => event_loop(&mut terminal, &mut app, source, &panicked).await,
+        Ok(()) => {
+            let channels = Channels {
+                loader,
+                receiver,
+                panicked: &panicked,
+            };
+            event_loop(&mut terminal, &mut app, channels, palette).await
+        }
         Err(error) => Err(error.into()),
     };
     let _ = execute!(io::stdout(), DisableMouseCapture);
@@ -71,15 +80,24 @@ fn install_panic_hook(panicked: Arc<Notify>) {
     }));
 }
 
+/// What the event loop waits on, besides terminal events.
+struct Channels<'a> {
+    loader: Loader,
+    receiver: mpsc::UnboundedReceiver<Message>,
+    panicked: &'a Notify,
+}
+
 async fn event_loop(
     terminal: &mut DefaultTerminal,
     app: &mut App,
-    source: TileSource,
-    panicked: &Notify,
+    channels: Channels<'_>,
+    palette: Palette,
 ) -> Result<(), Error> {
-    let palette = Palette::detect();
-    let (sender, mut receiver) = mpsc::unbounded_channel();
-    let loader = Loader::new(source, sender);
+    let Channels {
+        loader,
+        mut receiver,
+        panicked,
+    } = channels;
     let mut events = EventStream::new();
     let mut dirty = true;
     loop {

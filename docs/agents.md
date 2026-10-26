@@ -64,6 +64,7 @@ The config file is `~/.config/tmaps/config.toml`. `--config PATH` or the `TMAPS_
 ```toml
 units = "metric"   # text output only
 lang = "en-US"     # place names and instructions
+theme = "auto"     # map colors: auto, dark, or light
 
 [endpoints]
 photon = "https://photon.komoot.io"

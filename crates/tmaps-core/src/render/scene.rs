@@ -1,4 +1,5 @@
 use super::canvas::Canvas;
+use super::label::{self, Candidate};
 use super::style::{Class, classify};
 use super::view::{View, VisibleTile};
 use super::{DOTS_PER_CELL_X, DOTS_PER_CELL_Y};
@@ -10,6 +11,7 @@ use crate::tiles::TileId;
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct PreparedTile {
     shapes: [Vec<Shape>; Class::ALL.len()],
+    labels: Vec<Candidate>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -20,11 +22,14 @@ struct Shape {
     parts: Vec<Vec<[f32; 2]>>,
 }
 
-type DotPoint = (f64, f64);
+pub(super) type DotPoint = (f64, f64);
 
 impl PreparedTile {
+    /// `lang` is a BCP 47 tag, for example `it-IT`. Labels use the names in its language when
+    /// the tile has them.
     #[must_use]
-    pub fn new(tile: &mvt::Tile) -> Self {
+    pub fn new(tile: &mvt::Tile, lang: &str) -> Self {
+        let lang = lang.split(['-', '_']).next().unwrap_or_default();
         let mut prepared = Self::default();
         for layer in &tile.layers {
             #[expect(
@@ -33,6 +38,9 @@ impl PreparedTile {
             )]
             let extent = layer.extent.max(1) as f32;
             for feature in &layer.features {
+                prepared
+                    .labels
+                    .extend(label::candidate(layer, feature, lang));
                 let Some(style) = classify(layer, feature) else {
                     continue;
                 };
@@ -101,10 +109,17 @@ pub fn render<'a>(
             }
         }
     }
+    label::place(
+        &mut canvas,
+        view,
+        visible
+            .iter()
+            .map(|(placement, tile)| (placement, tile.labels.as_slice())),
+    );
     canvas
 }
 
-fn to_dots(placement: &VisibleTile, [x, y]: [f32; 2]) -> DotPoint {
+pub(super) fn to_dots(placement: &VisibleTile, [x, y]: [f32; 2]) -> DotPoint {
     (
         placement.left + f64::from(x) * placement.size,
         placement.top + f64::from(y) * placement.size,
@@ -178,7 +193,11 @@ fn draw_line(canvas: &mut Canvas, points: &[DotPoint], class: Class) {
 
 /// Liang–Barsky clipping of a segment to `[0, width] × [0, height]`. Without it, a long
 /// segment of an overzoomed tile would step through millions of dots outside the screen.
-fn clip(a: DotPoint, b: DotPoint, (width, height): (f64, f64)) -> Option<(DotPoint, DotPoint)> {
+pub(super) fn clip(
+    a: DotPoint,
+    b: DotPoint,
+    (width, height): (f64, f64),
+) -> Option<(DotPoint, DotPoint)> {
     let (dx, dy) = (b.0 - a.0, b.1 - a.1);
     let (mut t0, mut t1) = (0.0_f64, 1.0_f64);
     for (p, q) in [

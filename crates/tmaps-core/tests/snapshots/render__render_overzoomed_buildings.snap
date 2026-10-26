@@ -1,6 +1,7 @@
 ---
 source: crates/tmaps-core/tests/render.rs
-expression: "snapshot(MILAN_Z14, 16.0)"
+assertion_line: 108
+expression: "snapshot(MILAN_Z14, 16.0, \"it-IT\")"
 ---
   ⠈⢾⣣             ⠈⠢⡑⢄⡜⢣⠔⠁                                                   ⣀⢔⡩⣊⠕⠉                 
     ⡿⡀              ⠑⢄⠑⢄⠑⢄                                                ⢀⡠⣊⢔⠥⠊                    
@@ -82,4 +83,6 @@ mm   pppppppppppppppppppppppppppppp  mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm  mm  
 pppppbbbbbbbbbbbbbbbbbbbbbbbbbbbbbppppppppmppppppppppppppppppppppp       mmmmmmmmmmmmmmmmmmmmmmmmmmm
 bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbpmm pppbbbbbbbbbbbbbbbbbbpppppppppppppppppppppppppppppppppp
 bbbbbbbbbbbbbbb    bbb             bbbbbbppm  pbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbppp      p  
-bbbbbbbbbbbbbb     bbbb           bbb bbbbpmmmppbbbb    bbbb  bbbbbbbb  bbbbbbbbbbbbbbbbp p      p
+bbbbbbbbbbbbbb     bbbb           bbb bbbbpmmmppbbbb    bbbb  bbbbbbbb  bbbbbbbbbbbbbbbbp p      p  
+
+35, 44 Road: Corso Giacomo Matteotti

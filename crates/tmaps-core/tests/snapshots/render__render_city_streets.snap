@@ -1,6 +1,7 @@
 ---
 source: crates/tmaps-core/tests/render.rs
-expression: "snapshot(MILAN_Z14, 14.0)"
+assertion_line: 103
+expression: "snapshot(MILAN_Z14, 14.0, \"it-IT\")"
 ---
                ⢣              ⠈⠉⠑⡗⠢⠤⢄⣀⣀⠈⠉⠙⠒⠢⠤⢄⡜⣿⡦⡷⠏⠉⠓⢦⣀                       ⡰ ⡏⡳⠤⡀         ⢠⠊     
                 ⠙⡄               ⡇     ⠉⠉⠒⠤⢄ ⢀⣼⣟⡞     ⠉⠓⢦⣀                   ⡰⠁⢠⠟⢠⠃⠈⠑⠢⣀     ⣰⠁      
@@ -82,4 +83,8 @@ mmmtt    m                                       mmm  mm            mm    m mmmm
 mmm  mmmtmg                           mmm    m   mggmmmmmm        mm   mmm        m   ggggggggmm    
 mt    mmmm                            mm mmmmm    mmm    mmmmm   m    mm          m    gggmmmmmm    
  mmmmm  tmmmmttttt                    mmmmmmmt   mmg         mmmmmmm mm   mmmmmmmmmmmmmmmmm     g   
-  mmm   mt ttt   tt                  mmt     mmmmg tttttttt         mmmmmm         m
+  mmm   mt ttt   tt                  mmt     mmmmg tttttttt         mmmmmm         m                
+
+35, 12 City: Milano
+ 4,  2 Suburb: Brera
+39, 53 Suburb: Verziere

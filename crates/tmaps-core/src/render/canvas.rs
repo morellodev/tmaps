@@ -1,13 +1,15 @@
+use super::label::Label;
 use super::style::Class;
 use super::{DOTS_PER_CELL_X, DOTS_PER_CELL_Y};
 
 /// A grid of terminal cells. Lines set braille dots and the foreground class; areas set the
-/// background class.
+/// background class. Labels cover the cells under their text.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Canvas {
     width: u16,
     height: u16,
     cells: Vec<Cell>,
+    labels: Vec<Label>,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -40,6 +42,7 @@ impl Canvas {
             width,
             height,
             cells: vec![Cell::default(); usize::from(width) * usize::from(height)],
+            labels: Vec::new(),
         }
     }
 
@@ -66,6 +69,16 @@ impl Canvas {
     /// The rows of cells, from top to bottom.
     pub fn rows(&self) -> impl Iterator<Item = &[Cell]> {
         self.cells.chunks(usize::from(self.width.max(1)))
+    }
+
+    /// The labels, which do not overlap.
+    #[must_use]
+    pub fn labels(&self) -> &[Label] {
+        &self.labels
+    }
+
+    pub(super) fn add_label(&mut self, label: Label) {
+        self.labels.push(label);
     }
 
     pub(super) fn set_dot(&mut self, x: i64, y: i64, class: Class) {
