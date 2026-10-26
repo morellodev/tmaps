@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::num::NonZeroUsize;
 use std::time::{Duration, Instant};
 
@@ -6,6 +6,8 @@ use crossterm::event::{
     Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
 };
 use lru::LruCache;
+use tmaps_core::LatLon;
+use tmaps_core::places::validate_name;
 use tmaps_core::render::{
     Canvas, DOTS_PER_CELL_X, DOTS_PER_CELL_Y, PreparedTile, RouteLine, View, render,
 };
@@ -13,6 +15,7 @@ use tmaps_core::routing::{Mode, Route};
 use tmaps_core::tiles::TileId;
 
 use crate::message::{Message, SourceInfo};
+use crate::prompt::{self, Prompt, Search};
 use crate::services::Request;
 use crate::trip::{End, Routes, Trip};
 
@@ -23,6 +26,8 @@ const PAN_STEP: f64 = 0.1;
 const FAST_PAN_STEP: f64 = 0.5;
 /// A step of the itinerary is a street corner, so the map zooms in at least to street level.
 const STEP_ZOOM: f64 = 16.0;
+/// A search result or a saved place has no extent, so the map shows its neighborhood.
+const PLACE_ZOOM: f64 = 15.0;
 
 pub struct App {
     view: View,
@@ -37,6 +42,12 @@ pub struct App {
     drag_from: Option<(u16, u16)>,
     trip: Trip,
     panel: bool,
+    prompt: Option<Prompt>,
+    places: BTreeMap<String, LatLon>,
+    last_search: u64,
+    /// An error of a search or of a saved place.
+    action_error: Option<String>,
+    requests: Vec<Request>,
 }
 
 enum SourceState {
@@ -61,7 +72,19 @@ impl App {
             drag_from: None,
             trip: Trip::default(),
             panel: true,
+            prompt: None,
+            places: BTreeMap::new(),
+            last_search: 0,
+            action_error: None,
+            requests: Vec::new(),
         }
+    }
+
+    /// The saved places that `'` lists.
+    #[must_use]
+    pub fn with_places(mut self, places: BTreeMap<String, LatLon>) -> Self {
+        self.places = places;
+        self
     }
 
     pub fn view(&self) -> View {
@@ -80,9 +103,20 @@ impl App {
         self.quit
     }
 
-    /// A route error first: it is the answer to the last action of the user.
+    /// A route, search, or save error first: it is the answer to an action of the user.
     pub fn error(&self) -> Option<&str> {
-        self.trip.error().or(self.error.as_deref())
+        self.trip
+            .error()
+            .or(self.action_error.as_deref())
+            .or(self.error.as_deref())
+    }
+
+    pub fn prompt(&self) -> Option<&Prompt> {
+        self.prompt.as_ref()
+    }
+
+    pub fn places(&self) -> &BTreeMap<String, LatLon> {
+        &self.places
     }
 
     pub fn trip(&self) -> &Trip {
@@ -96,7 +130,9 @@ impl App {
 
     /// The requests for the providers since the last call.
     pub fn take_requests(&mut self) -> Vec<Request> {
-        self.trip.take_requests()
+        let mut requests = self.trip.take_requests();
+        requests.append(&mut self.requests);
+        requests
     }
 
     pub fn attribution(&self) -> Option<&str> {
@@ -113,7 +149,11 @@ impl App {
     /// Returns `true` when the screen must be drawn again.
     pub fn handle(&mut self, event: &Event) -> bool {
         match event {
-            Event::Key(key) if key.kind == KeyEventKind::Press => self.on_key(*key),
+            Event::Key(key) if key.kind == KeyEventKind::Press => {
+                // A search or save error is the answer to the last action, until the next one.
+                let had_error = self.action_error.take().is_some();
+                self.on_key(*key) || had_error
+            }
             Event::Mouse(mouse) => self.on_mouse(*mouse),
             Event::Resize(..) => true,
             _ => false,
@@ -156,6 +196,25 @@ impl App {
                 }
             }
             Message::PlaceName(id, name) => self.trip.receive_name(id, name),
+            Message::SearchResults(id, result) => {
+                if let Some(Prompt::Search(search)) = &mut self.prompt
+                    && search.pending == Some(id)
+                {
+                    search.pending = None;
+                    search.selected = 0;
+                    match result {
+                        Ok(places) => search.results = places,
+                        Err(error) => {
+                            search.results.clear();
+                            self.action_error = Some(error);
+                        }
+                    }
+                }
+            }
+            Message::PlaceSaved(name, location) => {
+                self.places.insert(name, location);
+            }
+            Message::SaveFailed(error) => self.action_error = Some(error),
         }
     }
 
@@ -249,6 +308,9 @@ impl App {
     }
 
     fn on_key(&mut self, key: KeyEvent) -> bool {
+        if self.prompt.is_some() {
+            return self.on_prompt_key(key);
+        }
         let shift = key.modifiers.contains(KeyModifiers::SHIFT);
         let step = if shift { FAST_PAN_STEP } else { PAN_STEP };
         match key.code {
@@ -283,9 +345,124 @@ impl App {
             KeyCode::Char('p') if !self.trip.is_empty() => self.panel = !self.panel,
             KeyCode::Char(']') => self.show_step(1),
             KeyCode::Char('[') => self.show_step(-1),
+            KeyCode::Char('/') => self.open(Prompt::Search(Search::default())),
+            KeyCode::Char('m') => self.open(Prompt::SavePlace {
+                name: String::new(),
+                invalid: false,
+            }),
+            KeyCode::Char('\'') => self.open(Prompt::Places { selected: 0 }),
             _ => return false,
         }
         true
+    }
+
+    fn on_prompt_key(&mut self, key: KeyEvent) -> bool {
+        if key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL) {
+            self.quit = true;
+            return true;
+        }
+        if key.code == KeyCode::Esc {
+            self.close_prompt();
+            return true;
+        }
+        let Some(prompt) = &mut self.prompt else {
+            return false;
+        };
+        match prompt {
+            Prompt::Search(search) => {
+                if key.code == KeyCode::Enter {
+                    let location = search.chosen().map(|place| place.location);
+                    self.close_at(location);
+                } else if let Some(selected) =
+                    prompt::select(search.selected, search.results.len(), key.code)
+                {
+                    search.selected = selected;
+                } else if prompt::edit(&mut search.text, key) {
+                    self.request_search();
+                } else {
+                    return false;
+                }
+            }
+            Prompt::SavePlace { name, invalid } => {
+                if key.code == KeyCode::Enter {
+                    match validate_name(name) {
+                        Ok(valid) => {
+                            let name = valid.to_owned();
+                            self.save_place(name);
+                        }
+                        Err(_) => *invalid = true,
+                    }
+                } else if prompt::edit(name, key) {
+                    *invalid = false;
+                } else {
+                    return false;
+                }
+            }
+            Prompt::Places { selected } => {
+                if key.code == KeyCode::Enter {
+                    let location = self.places.values().nth(*selected).copied();
+                    self.close_at(location);
+                } else if let Some(next) = prompt::select(*selected, self.places.len(), key.code) {
+                    *selected = next;
+                } else {
+                    return false;
+                }
+            }
+        }
+        true
+    }
+
+    /// Help covers the prompt, so it closes.
+    fn open(&mut self, prompt: Prompt) {
+        self.help = false;
+        self.prompt = Some(prompt);
+    }
+
+    fn close_prompt(&mut self) {
+        if let Some(Prompt::Search(Search {
+            pending: Some(_), ..
+        })) = self.prompt.take()
+        {
+            self.requests.push(Request::CancelSearch);
+        }
+    }
+
+    /// Closes the prompt and centers the map on `location`.
+    fn close_at(&mut self, location: Option<LatLon>) {
+        self.close_prompt();
+        if let Some(location) = location {
+            self.view = View::new(location, self.view.zoom().max(PLACE_ZOOM));
+        }
+    }
+
+    fn request_search(&mut self) {
+        let Some(Prompt::Search(search)) = &mut self.prompt else {
+            return;
+        };
+        let pending = search.pending.is_some();
+        *search = Search {
+            text: std::mem::take(&mut search.text),
+            ..Search::default()
+        };
+        if search.text.trim().is_empty() {
+            if pending {
+                self.requests.push(Request::CancelSearch);
+            }
+            return;
+        }
+        self.last_search += 1;
+        search.pending = Some(self.last_search);
+        self.requests.push(Request::Search {
+            id: self.last_search,
+            text: search.text.clone(),
+            near: self.view.center(),
+        });
+    }
+
+    fn save_place(&mut self, name: String) {
+        let location = rounded(self.view.center());
+        self.close_prompt();
+        self.requests.push(Request::SavePlace { name, location });
     }
 
     fn on_mouse(&mut self, mouse: MouseEvent) -> bool {
@@ -329,6 +506,12 @@ impl App {
     }
 }
 
+/// To 6 decimals, about 0.1 m: more digits in the config file only add noise.
+fn rounded(location: LatLon) -> LatLon {
+    let round = |degrees: f64| (degrees * 1e6).round() / 1e6;
+    LatLon::new(round(location.lat()), round(location.lon())).unwrap_or(location)
+}
+
 fn route_lines(routes: &[Route], selected: usize) -> Vec<RouteLine<'_>> {
     routes
         .iter()
@@ -342,7 +525,9 @@ fn route_lines(routes: &[Route], selected: usize) -> Vec<RouteLine<'_>> {
 
 #[cfg(test)]
 mod tests {
-    use tmaps_core::LatLon;
+    use std::assert_matches;
+
+    use tmaps_core::geocode::Place;
 
     use super::*;
     use crate::trip::sample_route;
@@ -424,13 +609,13 @@ mod tests {
         key(app, KeyCode::Char('L'));
         key(app, KeyCode::Char('L'));
         key(app, KeyCode::Char('e'));
-        *app.take_requests().last().unwrap()
+        app.take_requests().pop().unwrap()
     }
 
-    fn route_id(request: Request) -> u64 {
+    fn route_id(request: &Request) -> u64 {
         match request {
-            Request::Route { id, .. } => id,
-            Request::PlaceName { .. } => panic!("not a route request"),
+            Request::Route { id, .. } => *id,
+            _ => panic!("not a route request"),
         }
     }
 
@@ -452,7 +637,7 @@ mod tests {
     #[test]
     fn new_routes_fit_the_view() {
         let mut app = ready_app();
-        let id = route_id(plan_route(&mut app));
+        let id = route_id(&plan_route(&mut app));
         let rome = LatLon::new(41.9028, 12.4964).unwrap();
         app.receive(
             Message::Routes(id, Ok(vec![sample_route(&[milan(), rome])])),
@@ -464,7 +649,7 @@ mod tests {
     #[test]
     fn bracket_centers_the_map_on_the_next_step() {
         let mut app = ready_app();
-        let id = route_id(plan_route(&mut app));
+        let id = route_id(&plan_route(&mut app));
         let step = LatLon::new(45.47, 9.2).unwrap();
         app.receive(
             Message::Routes(id, Ok(vec![sample_route(&[step, milan()])])),
@@ -477,7 +662,7 @@ mod tests {
     #[test]
     fn route_error_shows_before_a_tile_error() {
         let mut app = ready_app();
-        let id = route_id(plan_route(&mut app));
+        let id = route_id(&plan_route(&mut app));
         let now = Instant::now();
         app.receive(
             Message::Tile(TileId { z: 14, x: 0, y: 0 }, Err("timeout".to_owned())),
@@ -509,6 +694,237 @@ mod tests {
         key(&mut app, KeyCode::Char('s'));
         app.handle(&press(KeyCode::Char('c'), KeyModifiers::ALT));
         assert!(!app.trip().is_empty());
+    }
+
+    fn place(label: &str, lat: f64, lon: f64) -> Place {
+        Place {
+            label: label.to_owned(),
+            name: None,
+            location: LatLon::new(lat, lon).unwrap(),
+            category: None,
+            country_code: None,
+        }
+    }
+
+    fn type_text(app: &mut App, text: &str) {
+        for c in text.chars() {
+            key(app, KeyCode::Char(c));
+        }
+    }
+
+    /// The number of the last search request.
+    fn last_search(app: &mut App) -> u64 {
+        app.take_requests()
+            .into_iter()
+            .rev()
+            .find_map(|request| match request {
+                Request::Search { id, .. } => Some(id),
+                _ => None,
+            })
+            .unwrap()
+    }
+
+    #[test]
+    fn typing_searches_near_the_center() {
+        let mut app = ready_app();
+        key(&mut app, KeyCode::Char('/'));
+        type_text(&mut app, "Duomo");
+        assert_eq!(
+            app.take_requests().last(),
+            Some(&Request::Search {
+                id: 5,
+                text: "Duomo".to_owned(),
+                near: View::new(milan(), 14.0).center(),
+            })
+        );
+    }
+
+    #[test]
+    fn search_keys_do_not_move_the_map() {
+        let mut app = ready_app();
+        key(&mut app, KeyCode::Char('/'));
+        type_text(&mut app, "hjkl+q");
+        assert!(app.view() == View::new(milan(), 14.0) && !app.should_quit());
+    }
+
+    #[test]
+    fn blank_search_sends_no_request() {
+        let mut app = ready_app();
+        key(&mut app, KeyCode::Char('/'));
+        type_text(&mut app, " ");
+        assert_eq!(app.take_requests(), []);
+    }
+
+    #[test]
+    fn enter_centers_the_map_on_the_selected_result() {
+        let mut app = ready_app();
+        key(&mut app, KeyCode::Char('/'));
+        type_text(&mut app, "Roma");
+        let id = last_search(&mut app);
+        let results = vec![
+            place("Roma, Lazio", 41.9, 12.5),
+            place("Roma, Texas", 26.4, -99.0),
+        ];
+        app.receive(Message::SearchResults(id, Ok(results)), Instant::now());
+        key(&mut app, KeyCode::Down);
+        key(&mut app, KeyCode::Enter);
+        assert!(
+            app.prompt().is_none()
+                && app.view() == View::new(place("", 26.4, -99.0).location, 15.0)
+        );
+    }
+
+    #[test]
+    fn old_search_results_are_ignored() {
+        let mut app = ready_app();
+        key(&mut app, KeyCode::Char('/'));
+        type_text(&mut app, "Ro");
+        let old = last_search(&mut app);
+        type_text(&mut app, "m");
+        app.receive(
+            Message::SearchResults(old, Ok(vec![place("Rovereto", 45.9, 11.0)])),
+            Instant::now(),
+        );
+        assert_matches!(app.prompt(), Some(Prompt::Search(search)) if search.results.is_empty());
+    }
+
+    #[test]
+    fn search_error_goes_to_the_status_line() {
+        let mut app = ready_app();
+        key(&mut app, KeyCode::Char('/'));
+        type_text(&mut app, "Roma");
+        let id = last_search(&mut app);
+        app.receive(
+            Message::SearchResults(id, Err("timeout".to_owned())),
+            Instant::now(),
+        );
+        assert_eq!(app.error(), Some("timeout"));
+    }
+
+    #[test]
+    fn esc_closes_the_search_and_keeps_the_view() {
+        let mut app = ready_app();
+        key(&mut app, KeyCode::Char('/'));
+        type_text(&mut app, "Roma");
+        key(&mut app, KeyCode::Esc);
+        assert!(app.prompt().is_none() && app.view() == View::new(milan(), 14.0));
+    }
+
+    #[test]
+    fn m_saves_the_center_as_a_place() {
+        let mut app = ready_app();
+        key(&mut app, KeyCode::Char('m'));
+        type_text(&mut app, "work");
+        key(&mut app, KeyCode::Enter);
+        assert_eq!(
+            app.take_requests(),
+            [Request::SavePlace {
+                name: "work".to_owned(),
+                location: milan()
+            }]
+        );
+    }
+
+    #[test]
+    fn saved_place_joins_the_list() {
+        let mut app = ready_app();
+        app.receive(
+            Message::PlaceSaved("work".to_owned(), milan()),
+            Instant::now(),
+        );
+        assert_eq!(app.places().get("work"), Some(&milan()));
+    }
+
+    #[test]
+    fn enter_ignores_the_results_of_the_previous_text() {
+        let mut app = ready_app();
+        key(&mut app, KeyCode::Char('/'));
+        type_text(&mut app, "Ro");
+        let id = last_search(&mut app);
+        app.receive(
+            Message::SearchResults(id, Ok(vec![place("Rovereto", 45.9, 11.0)])),
+            Instant::now(),
+        );
+        type_text(&mut app, "ma");
+        key(&mut app, KeyCode::Enter);
+        assert_eq!(app.view(), View::new(milan(), 14.0));
+    }
+
+    #[test]
+    fn esc_cancels_the_pending_search() {
+        let mut app = ready_app();
+        key(&mut app, KeyCode::Char('/'));
+        type_text(&mut app, "Roma");
+        app.take_requests();
+        key(&mut app, KeyCode::Esc);
+        assert_eq!(app.take_requests(), [Request::CancelSearch]);
+    }
+
+    #[test]
+    fn next_key_clears_the_search_error() {
+        let mut app = ready_app();
+        app.receive(
+            Message::SaveFailed("cannot save @work".to_owned()),
+            Instant::now(),
+        );
+        key(&mut app, KeyCode::Right);
+        assert_eq!(app.error(), None);
+    }
+
+    #[test]
+    fn search_closes_the_help() {
+        let mut app = ready_app();
+        key(&mut app, KeyCode::Char('?'));
+        key(&mut app, KeyCode::Char('/'));
+        assert!(!app.help());
+    }
+
+    #[test]
+    fn invalid_place_name_keeps_the_prompt_open() {
+        let mut app = ready_app();
+        key(&mut app, KeyCode::Char('m'));
+        type_text(&mut app, "my work");
+        key(&mut app, KeyCode::Enter);
+        assert_matches!(app.prompt(), Some(Prompt::SavePlace { invalid: true, .. }));
+    }
+
+    #[test]
+    fn save_error_goes_to_the_status_line() {
+        let mut app = ready_app();
+        app.receive(
+            Message::SaveFailed("cannot save @work".to_owned()),
+            Instant::now(),
+        );
+        assert_eq!(app.error(), Some("cannot save @work"));
+    }
+
+    #[test]
+    fn quote_goes_to_the_selected_place() {
+        let rome = LatLon::new(41.9, 12.5).unwrap();
+        let mut app = ready_app().with_places(BTreeMap::from([
+            ("home".to_owned(), milan()),
+            ("rome".to_owned(), rome),
+        ]));
+        key(&mut app, KeyCode::Char('\''));
+        key(&mut app, KeyCode::Down);
+        key(&mut app, KeyCode::Enter);
+        assert_eq!(app.view(), View::new(rome, 15.0));
+    }
+
+    #[test]
+    fn enter_without_places_closes_the_list() {
+        let mut app = ready_app();
+        key(&mut app, KeyCode::Char('\''));
+        key(&mut app, KeyCode::Enter);
+        assert!(app.prompt().is_none() && app.view() == View::new(milan(), 14.0));
+    }
+
+    #[test]
+    fn ctrl_c_quits_from_a_prompt() {
+        let mut app = ready_app();
+        key(&mut app, KeyCode::Char('/'));
+        app.handle(&press(KeyCode::Char('c'), KeyModifiers::CONTROL));
+        assert!(app.should_quit());
     }
 
     #[test]

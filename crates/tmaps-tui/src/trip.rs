@@ -281,7 +281,7 @@ mod tests {
             .into_iter()
             .find_map(|request| match request {
                 Request::Route { id, .. } => Some(id),
-                Request::PlaceName { .. } => None,
+                _ => None,
             })
             .unwrap()
     }

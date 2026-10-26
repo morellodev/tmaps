@@ -14,6 +14,7 @@ use tmaps_core::routing::{Mode, Route, Step};
 
 use crate::app::App;
 use crate::palette::Palette;
+use crate::prompt::Prompt;
 use crate::trip::{Routes, Trip, Waypoint};
 
 const STATUS_HEIGHT: u16 = 1;
@@ -23,9 +24,10 @@ const DRAWER_HEIGHT: u16 = 12;
 const SUMMARY_WIDTH: u16 = PANEL_WIDTH - 4;
 /// Narrower terminals get the panel as a drawer below the map, so the map keeps its width.
 const SIDE_PANEL_MIN_WIDTH: u16 = 100;
+const PROMPT_WIDTH: u16 = 60;
 /// Shows water without colors, where it would otherwise look like land.
 const MONO_WATER: char = '⠄';
-const HELP: [(&str, &str); 12] = [
+const HELP: [(&str, &str); 15] = [
     ("←↓↑→  hjkl", "pan"),
     ("Shift + pan", "pan faster"),
     ("+ -  wheel", "zoom"),
@@ -36,6 +38,9 @@ const HELP: [(&str, &str); 12] = [
     ("Tab", "next route"),
     ("]  [", "next or previous step"),
     ("p", "show or hide the route panel"),
+    ("/", "search"),
+    ("m", "save the place at +"),
+    ("'", "go to a saved place"),
     ("?  Esc", "show or hide this help"),
     ("q  Ctrl-C", "quit"),
 ];
@@ -108,6 +113,9 @@ pub fn draw(frame: &mut Frame, app: &App, palette: Palette, units: Units) {
         draw_panel(frame, trip, palette, units, panel);
     }
     draw_status(frame, app, palette, areas.status);
+    if let Some(prompt) = app.prompt() {
+        draw_prompt(frame, &prompt_view(prompt, app), palette, areas.map);
+    }
     if app.help() {
         draw_help(frame, frame.area());
     }
@@ -420,6 +428,124 @@ fn draw_status(frame: &mut Frame, app: &App, palette: Palette, area: Rect) {
     frame.render_widget(attribution.right_aligned().style(style), attribution_area);
 }
 
+/// What a prompt shows: an optional text input, then a list or a note.
+struct PromptView {
+    title: &'static str,
+    input: Option<String>,
+    items: Vec<String>,
+    selected: Option<usize>,
+    note: Option<String>,
+}
+
+fn prompt_view(prompt: &Prompt, app: &App) -> PromptView {
+    match prompt {
+        Prompt::Search(search) => {
+            let note = if !search.results.is_empty() {
+                None
+            } else if search.pending.is_some() {
+                Some("Searching…")
+            } else if search.text.trim().is_empty() {
+                Some("Type a place or an address. Enter: go there.")
+            } else {
+                Some("No places found.")
+            };
+            PromptView {
+                title: " Search ",
+                input: Some(format!("› {}", search.text)),
+                items: search
+                    .results
+                    .iter()
+                    .map(|place| place.label.clone())
+                    .collect(),
+                selected: Some(search.selected),
+                note: note.map(str::to_owned),
+            }
+        }
+        Prompt::SavePlace { name, invalid } => PromptView {
+            title: " Save the place at + ",
+            input: Some(format!("@{name}")),
+            items: Vec::new(),
+            selected: None,
+            note: Some(
+                if *invalid {
+                    "Not a valid name. Use letters, digits, '-', and '_'."
+                } else {
+                    "Letters, digits, '-', and '_'. Enter: save."
+                }
+                .to_owned(),
+            ),
+        },
+        Prompt::Places { selected } => PromptView {
+            title: " Saved places ",
+            input: None,
+            items: app
+                .places()
+                .iter()
+                .map(|(name, location)| format!("@{name}  {}", coordinates(*location)))
+                .collect(),
+            selected: Some(*selected),
+            note: app
+                .places()
+                .is_empty()
+                .then(|| "No saved places. m: save the place at +".to_owned()),
+        },
+    }
+}
+
+/// Draws the prompt at the top of the map, so the place at the crosshair stays visible.
+fn draw_prompt(frame: &mut Frame, view: &PromptView, palette: Palette, area: Rect) {
+    let input_height = u16::from(view.input.is_some());
+    let list_height = view.items.len() + usize::from(view.note.is_some());
+    let height = u16::try_from(list_height)
+        .unwrap_or(u16::MAX)
+        .saturating_add(input_height + 2);
+    let width = PROMPT_WIDTH.min(area.width);
+    let popup = Rect {
+        x: area.x + (area.width - width) / 2,
+        y: area.y + u16::from(area.height > height),
+        width,
+        height,
+    }
+    .intersection(area);
+    let block = Block::bordered()
+        .title(view.title)
+        .padding(Padding::horizontal(1))
+        .style(Style::new().fg(palette.text()).bg(palette.background()));
+    let inner = block.inner(popup);
+    frame.render_widget(Clear, popup);
+    frame.render_widget(block, popup);
+
+    let [input_area, list_area] = inner.layout(&Layout::vertical([
+        Constraint::Length(input_height),
+        Constraint::Fill(1),
+    ]));
+    if let Some(input) = &view.input {
+        let input = Line::from(input.as_str());
+        let column = u16::try_from(input.width()).unwrap_or(u16::MAX);
+        frame.render_widget(input, input_area);
+        if input_area.width > 0 {
+            frame.set_cursor_position((
+                input_area.x + column.min(input_area.width - 1),
+                input_area.y,
+            ));
+        }
+    }
+    let [items_area, note_area] = list_area.layout(&Layout::vertical([
+        Constraint::Length(u16::try_from(view.items.len()).unwrap_or(u16::MAX)),
+        Constraint::Fill(1),
+    ]));
+    let mut state = ListState::default().with_selected(view.selected);
+    frame.render_stateful_widget(
+        List::new(view.items.iter().map(String::as_str))
+            .highlight_style(Style::new().add_modifier(Modifier::REVERSED)),
+        items_area,
+        &mut state,
+    );
+    if let Some(note) = &view.note {
+        frame.render_widget(Line::from(note.as_str()), note_area);
+    }
+}
+
 fn draw_help(frame: &mut Frame, area: Rect) {
     let key_width = HELP
         .iter()
@@ -455,8 +581,11 @@ mod tests {
     use super::*;
     use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
 
+    use tmaps_core::geocode::Place;
+
     use crate::message::{Message, SourceInfo};
     use crate::palette::{Depth, Shade};
+    use crate::services::Request;
     use crate::trip::sample_route;
 
     fn status_line(width: u16, app: &App) -> String {
@@ -555,6 +684,18 @@ mod tests {
     }
 
     #[test]
+    fn long_text_wraps_under_its_start() {
+        assert_eq!(
+            hanging("  100 m  ", "Svolta a sinistra su Via Roma", 20),
+            [
+                "  100 m  Svolta a",
+                "         sinistra su",
+                "         Via Roma"
+            ]
+        );
+    }
+
+    #[test]
     fn panel_shows_the_routes_and_the_steps() {
         let text = screen(120, 20, &app_with_routes());
         let found = [
@@ -584,6 +725,48 @@ mod tests {
             KeyModifiers::NONE,
         )));
         assert!(screen(80, 24, &app).contains("Ctrl-C"));
+    }
+
+    fn type_keys(app: &mut App, keys: &str) {
+        for c in keys.chars() {
+            app.handle(&Event::Key(KeyEvent::new(
+                KeyCode::Char(c),
+                KeyModifiers::NONE,
+            )));
+        }
+    }
+
+    #[test]
+    fn search_shows_the_results_below_the_text() {
+        let mut app = App::new(View::new(LatLon::new(45.4642, 9.19).unwrap(), 14.0));
+        type_keys(&mut app, "/Duomo");
+        let id = app
+            .take_requests()
+            .into_iter()
+            .rev()
+            .find_map(|request| match request {
+                Request::Search { id, .. } => Some(id),
+                _ => None,
+            })
+            .unwrap();
+        let place = Place {
+            label: "Piazza del Duomo, Milano".to_owned(),
+            name: None,
+            location: LatLon::new(45.4641, 9.1919).unwrap(),
+            category: None,
+            country_code: None,
+        };
+        app.receive(Message::SearchResults(id, Ok(vec![place])), Instant::now());
+        let text = screen(80, 24, &app);
+        let lines: Vec<&str> = text.lines().collect();
+        assert!(lines[2].contains("› Duomo") && lines[3].contains("Piazza del Duomo, Milano"));
+    }
+
+    #[test]
+    fn empty_place_list_tells_how_to_save_a_place() {
+        let mut app = App::new(View::new(LatLon::new(45.4642, 9.19).unwrap(), 14.0));
+        type_keys(&mut app, "'");
+        assert!(screen(80, 24, &app).contains("No saved places."));
     }
 
     #[test]

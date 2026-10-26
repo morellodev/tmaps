@@ -60,6 +60,9 @@ The config file can change each endpoint. Providers are concrete types for now. 
 - The route request starts when both points are set or when the mode changes. Each request has a number, so a late result of an older request is dropped. When new routes arrive, the view fits them.
 - The selected route clears the map dots in its cells and labels keep away from it, so it stays readable.
 - The itinerary panel is on the right. Below 100 columns, it becomes a bottom drawer, with the steps next to the summary. It shows when a point is set. It shows the mode, the points, a summary for each alternative, and the steps, with the distance first.
+- `/` opens a search box at the top of the map. After a 300 ms pause in the typing, Photon gets the text with a bias to the map center. `↑`/`↓` select a result, `Enter` centers the map on it, and `Esc` closes the box.
+- `m` asks for a name and saves the point at the crosshair in `[places]` of the config file. `'` lists the saved places, and `Enter` centers the map on one.
+- An open box takes all keys, except `Ctrl-C`.
 - Colors: truecolor with a 256-color fallback. Dark and light themes. `theme = "auto"` (the default) asks the terminal for its background color with `terminal-colorsaurus` before the event reader starts. A terminal that does not answer gets the dark theme after a 1 s timeout. Obey `NO_COLOR`. The route uses a strong accent color. Alternatives are dimmed.
 - When the network fails, show cached tiles and an error in the status line. Route and search errors also go to the status line.
 

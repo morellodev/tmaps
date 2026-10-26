@@ -133,7 +133,7 @@ async fn execute(cli: Cli, format: Format) -> Result<(), CliError> {
     }
     let config = Config::load(&config_path)?;
     let Some(command) = cli.command else {
-        return Ok(tmaps_tui::run(&config, &Paths::detect()?).await?);
+        return Ok(tmaps_tui::run(&config, &config_path, &Paths::detect()?).await?);
     };
     let client = http::client()?;
     let context = Context {

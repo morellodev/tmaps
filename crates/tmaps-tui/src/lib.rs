@@ -4,12 +4,14 @@ mod app;
 mod loader;
 mod message;
 mod palette;
+mod prompt;
 mod saved_view;
 mod services;
 mod trip;
 mod ui;
 
 use std::io;
+use std::path::Path;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -42,24 +44,26 @@ pub enum Error {
     Panic,
 }
 
-/// Shows the map until the user quits, then saves the view for the next start.
+/// Shows the map until the user quits, then saves the view for the next start. Places that
+/// the user saves go into `config_file`.
 ///
 /// # Errors
 ///
 /// [`Error::Terminal`] if the terminal fails, [`Error::SaveView`] if the view cannot be saved
 /// after the quit, and [`Error::Panic`] if a background task panics.
-pub async fn run(config: &Config, paths: &Paths) -> Result<(), Error> {
+pub async fn run(config: &Config, config_file: &Path, paths: &Paths) -> Result<(), Error> {
     let cache = DiskCache::new(paths.cache_dir.join("tiles"), DEFAULT_CACHE_BYTES);
     let client = http::client()?;
     let source = TileSource::new(client.clone(), &config.endpoints.tilejson, cache);
     let view = saved_view::initial(&paths.state_dir, config.places.get("home").copied());
-    let mut app = App::new(view);
+    let mut app = App::new(view).with_places(config.places.clone());
     let (sender, receiver) = mpsc::unbounded_channel();
     let loader = Loader::new(source, &config.lang, sender.clone());
     let services = Services::new(
         Photon::new(client.clone(), &config.endpoints.photon),
         Valhalla::new(client, &config.endpoints.valhalla),
         &config.lang,
+        config_file.to_owned(),
         sender,
     );
     let palette = Palette::detect(config.theme);
