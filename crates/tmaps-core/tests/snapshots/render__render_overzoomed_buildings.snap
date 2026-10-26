@@ -1,0 +1,85 @@
+---
+source: crates/tmaps-core/tests/render.rs
+expression: "snapshot(MILAN_Z14, 16.0)"
+---
+  ⠈⢾⣣             ⠈⠢⡑⢄⡜⢣⠔⠁                                                   ⣀⢔⡩⣊⠕⠉                 
+    ⡿⡀              ⠑⢄⠑⢄⠑⢄                                                ⢀⡠⣊⢔⠥⠊                    
+    ⣿⡇                ⠑⡄⠣⡀⠑⢄                                            ⣀⢔⠥⡪⠜⠃                      
+    ⡟⣼                 ⠈⠢⡈⢢⠈⠢⡀                                       ⢀⡠⡪⢔⠕⠊                         
+    ⢸⢫⡆                  ⠈⢆⠑⢄⠑⢄                                    ⣀⢔⠥⡪⠒⠁      ⠈⢆                   
+    ⢸⠸⡱⡀                   ⠑⢌⠢⡀⠣⡀                               ⢀⡠⡪⢒⠕⠉           ⠱⡀                 
+    ⠘⢆⢣⠱⡀                    ⠣⡘⢄⠈⢆                            ⣀⢔⠕⡪⠒⠁                                
+      ⢣⠣⡱⡀                    ⠈⢢⠑⡄⠑⡄                       ⢀⡠⡪⠒⡡⠊                                   
+       ⠣⡱⡱⡀                     ⠑⢌⠢⡈⢢                    ⣀⢔⠕⣉⠔⠉                                     
+        ⠱⡱⡱⡀                     ⠈⠢⡑⢄⠑⢄               ⢀⠤⡪⢊⠕⠊                                        
+         ⠑⡵⡱⡀                      ⠘⢄⠣⡈⠢⡀          ⢀⠤⣊⠕⣉⢵⣇                                          
+          ⠘⡕⡵⡀                       ⠱⡈⢢⠘⢄⡀      ⣀⢖⡩⢊⠤⠊  ⠻⣧⡀                                        
+           ⠈⢞⢜⣄                       ⠈⢢⠑⢄⠱⡀  ⢀⠤⣊⠔⡡⠒⠁     ⠹⣳⡄                                       
+             ⠫⡢⡣⡀                       ⠑⢌⠢⡨⠢⢖⡡⣊⠔⠉         ⠘⢽⣆                                      
+              ⠑⡵⡱⡀                       ⠈⣪⣘⢔⣁⢏             ⠈⢺⢧⡀                                    
+               ⠈⢞⡜⢄                    ⢀⠔⡩⣊⠕⠪⡑⡌⠢⡀             ⠹⣳⡄                                   
+                 ⠹⣎⢢                 ⡠⢊⠕⡪⠊   ⠘⢌⠢⡑⢄             ⠘⢽⣢                                  
+                  ⠘⢧⡱⡀            ⢀⠔⡪⢔⠥⠊       ⠑⡕⢄⠑⢄            ⠈⢺⢵⡀                                
+                   ⠈⢳⡜⢄         ⡠⠒⡡⢊⠔⠁          ⠈⠢⡱⡀⠣⡀            ⠹⣺⢄                               
+                     ⠹⣎⢆     ⢀⠔⢊⠜⢫⠒⠁              ⠈⢎⢢⠈⢆            ⠑⡝⣦                              
+                      ⠈⢧⡣⡀ ⡠⠔⡡⠒⢱⠔⢣                  ⠑⢕⢄⠑⡄           ⠈⠪⡷⡄                            
+                        ⢳⡗⠚⡠⠚⡠⠊⠁⢣⠈⡆                  ⠈⠢⡣⡈⢢            ⠑⢝⢦                           
+                       ⡠⢚⢬⣚⠶⠮⠤⢄⣀⡈⡆⠸⡀                   ⠈⢪⢢⠑⢄            ⠙⢷⣄                         
+                    ⢀⠔⢉⢔⠥⠊ ⠉⠉⠒⠒⢤⠈⠹⡀⢣                     ⠑⢕⢄⠑⡄            ⠹⡢⡀                       
+                  ⡠⠒⡡⢊⠕⠁        ⢇ ⢣⠘⡄                     ⠈⠪⡢⡈⠢⡀         ⣀⣔⠝⡹⣆                      
+               ⢀⠤⢊⠤⡪⠊⠁          ⠘⡄⠈⡆⢱                       ⠘⢌⢆⠈⢢      ⣰⢮⡪⠒⠉ ⠈⢷⣄                    
+             ⣀⠔⣁⢔⡡⠊              ⠱⡀⠸⡀⢣                        ⠑⡕⡄⠑⢄ ⡠⣴⡻⠓⠁      ⠙⢧⡀                  
+           ⡠⠊⡠⢊⠔⠁                 ⢣ ⢣⠈⡆                        ⠈⠪⡢⡠⢽⠋⠁           ⠻⣦                 
+        ⢀⠔⢉⠔⡪⠒⠁                   ⠈⡆⠈⡆⠸⡀                         ⠑⢜⢄⠑⡄            ⠈⠳⣄               
+     ⣀⡠⡒⣁⢔⡡⠊                       ⠸⡀⠸⡀⢣                           ⠣⡱⡈⢢             ⠙⢧⡀             
+⣀⠤⢴⠪⠭⠔⢢⠊⡲⠁                          ⢣ ⢣ ⢇                           ⠈⢪⢢⠑⢄             ⠙⣍⠉⠉⢹         
+⠤⠒⠊⠙⠭⡖⢺ ⡇                           ⠈⢆⠈⡆⠘⡄                            ⠑⢕⢌⠢⣀            ⠘⢳⢆⡎         
+     ⢿⡀⡇⢱⡀                           ⡇ ⠸⡀⢱                             ⠈⠪⡢⡈⠢⡀           ⢸⢺⡇         
+   ⣀⡠⠼⡧⢸ ⠈⢹⠉⠉⠉⠉⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⢄⠗⢲⠒⢳⠒⢣                              ⠘⡜⢄⢑⣄          ⢸⢸⢣        ⢠
+⠖⢊⣉⠤⠔⠛⠉⠉⠉⠉⢺⠒⠒⠒⠒⠒⠒⠒⠒⠤⠤⠤⠤⠤⠤⠤⠤⠬⣉⣉⣉⣑⣒⣒⣒⣤⣤⣀⣸ ⠈⡆⠈⠉⠹⡉⠉⠉⠉⠉⠉⠉⠉⠑⠒⠒⠒⠒⠒⠒⠒⠤⠤⠤⠤⠤⠤⠤⢄⣀⣀⣀⣀⣰⡏⠉⢇ ⠱⢄⣀       ⢸⢸⠘⣄⣟⣛⣛⣃⡠⠤⡤⠣
+⠊⠁   ⣀⠤⠤⠔⠒⠺⠒⠢⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⢄⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⡀  ⠉⠉⡏⠉⢹⠉⠉⠉⠹⡒⠒⠒⠒⠒⠒⠒⠒⠒⠤⠤⠤⠤⠤⠤⠤⠤⠤⢄⣀⣀⣀⣀⣀⣀⣀⣀⡀  ⠈⡆   ⠉⠉⠉⠉⠉⠉⡏⠉⢸       ⢠⠃⡖
+⡠⠤⠒⠊⠉                             ⠈⠉⠉⠉⠉⠉⠑⡤⢧⠤⠤⠤⠵⡤⠤⠤⠤⠤⠤⠤⠤⠤⠤⣀⣀⣀⣀⣀⣀⣀⣀⣀       ⠈⠉⠉⠉⠉⠉⠉⠉⠉⠉⠒⠒⠒⠒⡗⠒⠚⠒⠶⠶⠶⠶⢖⣒⣺⣒⣟
+                                         ⢣⠘⡄ ⢀⠔⠁                  ⠉⠉⠉⠉⠉⠉⠉⠉⠉⠒⠒⠒⠲⠒⠒⠒⠒⠒⠤⠤⠤⠧⢤⠤⠤⠤⠤⣀⣀⣀⣀⣸⣰⣁
+                                         ⠈⡆⢱  ⡇                                         ⢸⠒⡆      ⢸  
+                                          ⠸⡈⡆⣀⠸⡀                                        ⢸ ⡇      ⡎  
+
+bbpmmbbbbb  bbbbbbppmmmmppbb      bbbbbbbbb    bbbbbbbbb    bb   bbbbb bbbbbbpmmmmpbbbbb   bbbbbb bb
+bbbbmpbbb  bbbbbbbbbppmmppbbbbbbb bbbbbbbbbb   bbbb bbbbbbbbbbbbbbbbbbbbbbppmmmpbbbbbbbbbbbbbbb     
+bbbbmpbbbbbbbbbbbbbbbbppmmppbbbbbbb bbbbbbbbbbbbb    bbbbbbbbb b   bbbbbpmmmppbbbbbb  bbbbbb        
+bbbbmmbbbb   bbbbbbbbbbppmmpppbbb    bbbbbbbbbbbb    bbbbbbbb bbbbbbbppmmmpbbbbbb    bbbb           
+bbbbpmpbbbb bbbbb    bbbbppmmppbbbb  bbb  bbbbbbbbbbbbbbbb  bbbbbbbpmmmppbbb b pp                   
+bbbbpmmpbbbbbb        bbbbbpmmmppbbbb    bbbbbbbbbbbbb   bbbbbbbppmmmpbbbbbbb    ppbbbbb            
+bbbbppmppbbbb      bbbbbbbbbbpmmppbbbbbbbb bbbbbbbbb    bbbbbbpmmmppbbbbb  bbb    bbbbbbbbbbbbbb    
+ bbbbbpmmpbbbb bbbb bbb  bbbbbppmmppbbbb  bbbbbbb  bbbbbbbbppmmmpbbbbbbb    bbb  bbbbb bbbbbbbbbbbbb
+  bbbbbpmmpbbbbbbbb   bbbbbbbbbbpmmmpbbbbbbbbbbbbbbbbbbbbpmmmppbbbbb  bbbb bbbb  bbbb          bbbbb
+bbbbbbbbpmmpbbbbbbbbbbbbbbb  bbbbppmmppbbbbbbbbbbbbbbbppmmmpbbbbb  b bbbbbbbbb  bbbbb              b
+bbbbbbbbbpmmpbbbb  bbbb bbbbbbbbbbbppmmppbbbbbbbbbbppmmmmmbbbbbbbbbbbbbbbbbbb   bbbb               b
+b     bbbbpmmpbbbbbbbb bbbbbbb   bbbbpmmpppbbbbbbpmmmppbbmmpbb   bbbbbbbbbb    bbbbb              bb
+bb    bbbbbpmmpbbbb bbbbbbbbbbbbbbbbbbppmmppbbppmmmppbbbbbmmpbbbbbbbbbbb       bbbb               bb
+bbbbbbbbbbbbbmmmpb   bbbbbbb bbbbbbbbbbbpmmmpmmmppbbbbbbbbbpmmbbbbbbbbb  bb   bbbbb              bbb
+bbbbbb    bbbbpmmpbbbbbbbbbbbbbbbbbbbbbbbppmmmpbbbbbbb  bbbbpmmpbb  bbbbbbb   bbbbbbb            bbb
+bbbbbbb bbbbbbbpmmpbbbbbbbb  bbbbbbbbbbppmmppmmppbbbb     bbbbmmpbbbbb    bb bbbbbbbbbbbbbbbb   bbbb
+gbbbbbbbb   bbbbbmmpbbbb bb bbbb  bbbpmmmpbbbpmmmpbbbbb    bbbbpmmbbbbb  bbbb      bbbbbbbbbbbbbbbbb
+ggbbbbbbbbbbbbbbbbpmmpbbbbbbb  bbbppmmmpbbbbbbbpmmppbbbbbbbbbbbbpmmpbbbbbbbbb             bbbbbbbbb 
+wggg   bbbbb   bbbbpmmpbbbbbbbbbppmmppbbbbb bbbbppmmppbbbbb   bbbbmmpbbb   bbb    bb              b 
+ggggggbbbbbbbb bbbbbbmmpbbbbbppmmmppbbbbb   bbbbbbpmmppbbbb    bbbbpmmbbbbbbbbbbbbbb      bbbbb     
+ggggggggbbbb    bbbbbbpmmpbppmmmppbbbb     bbb bbbbbpmmppbbb bbbbbbbpmmmbbb   bbbbbbbbb    bbbbbbb  
+ggggggggg      bb   bbbbmmpmmpppmppbbbb  bbb    bbbbbppmmpbbbbb   bbbbpmmbbbbbb   bbbbb       bbbbbb
+ggggggggb      bbbbbbbbpmmmmmmmmmmppbbbbb     bbbbbbbbbpmmppbbbbbbbb  bbmmmbbbbb bbbbbb            b
+ggggggbbbbb   bbbbbbppmmmpbpppppmmmpbbbb    bbbbb   bbbbbpmmppbbbbb    bbbmmmbbbbbbbbbbbb    bbb  bb
+gggbbbbbbb  bbbbbbppmmmpbbbbbbbbp mppbbbbbbbbbb     bbbbbbpmmmppbbbbbbbbbpmmmmbbbbb   bb    bb  bbbb
+ggg bbbb   bbbbppmmmppbbbbb  bbbppmmpbbbbbbbbbbb bb   bbbbbbpmmppbbbbbbmmmppbpmmbbbb bbbb bbb  bbbbb
+gggggbbbb    ppmmmpbbbbb      bbbppmmpbbbbbbbbbbb      bbbbbbbpmmppbpmmmpbbbbbbmmmbbbbbbbbbbbbbbbbbb
+bbgg bbbbb ppmmppbbbbbbbbbbbbbbbbbp mppbbbb  bbbbb  bbbbbbbbbbbpmmmmmpbbbbbbbbbbbmmbbbbbbbbbbbbbbbbb
+bbbbbbbbppmmmppbbbbb  bbbbbb   bbbppmmppbbb   bbbbbbbbb   bbbbbbbpmmppbb bbbbbbbbbpmmbbbbbbbbbbbbbbb
+bbbbbpppmmmpbbbbbb             bbbbppmmpbbbb        bbbbbbb   bbbbbpmmp    bbbbbbbbbmmmbbbbbbbbbbbbb
+ppppppmmppbbbbbb                bbbbp m pbbb         b bbbb     bbbbpmmppbbbbbbbbbbbbbmmpppbbbbbbbbb
+mmmmmmm pbbbbbbbbbbbbbbbbbbbbbbbbbbbppmmppbbb bb        bbb       bbbbpmmppbbbbbbbbbbbbpmmpbbbbbbbbb
+gggggmmmppbbbbbbbbbbbbbbbbbbbbbbbbbbbp mmpbbbbbbbbbbbbbbbbbbbbbbbbbbbbbpmmmppbbbbbbbbbbbpmpbbbbbbbbb
+gggpppmm pppppppppppppppppppppppppppppppmppbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbpmmppbbbbbbbbbbpmp        p
+pmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm mmppppppppppppppppppppppppppppppppppm pppbbbbbbbpmpppppppppp
+mm   pppppppppppppppppppppppppppppp  mmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmmm  mm   ppppppppm       ppp
+pppppbbbbbbbbbbbbbbbbbbbbbbbbbbbbbppppppppmppppppppppppppppppppppp       mmmmmmmmmmmmmmmmmmmmmmmmmmm
+bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbpmm pppbbbbbbbbbbbbbbbbbbpppppppppppppppppppppppppppppppppp
+bbbbbbbbbbbbbbb    bbb             bbbbbbppm  pbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbppp      p  
+bbbbbbbbbbbbbb     bbbb           bbb bbbbpmmmppbbbb    bbbb  bbbbbbbb  bbbbbbbbbbbbbbbbp p      p

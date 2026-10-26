@@ -12,18 +12,22 @@ workspace = true
 
 [dependencies]
 etcetera = "0.11"
+flate2 = "1"
 geo-types = { version = "0.7", default-features = false }
 polyline = "0.11"
+prost = "0.14"
 reqwest = { version = "0.13", default-features = false, features = ["default-tls", "http2", "json", "query", "gzip", "system-proxy"] }
 schemars = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+sha2 = "0.10"
 sys-locale = "0.3"
+tempfile = "3"
 thiserror = "2"
-tokio = { version = "1", features = ["sync", "time"] }
+tokio = { version = "1", features = ["rt", "sync", "time"] }
 toml = "1"
 
 [dev-dependencies]
-tempfile = "3.27.0"
+insta = "1"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync", "test-util", "time"] }
 wiremock = "0.6"

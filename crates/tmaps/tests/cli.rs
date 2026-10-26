@@ -355,6 +355,15 @@ mod errors {
     }
 
     #[tokio::test(flavor = "multi_thread")]
+    async fn map_without_a_terminal_exits_2() {
+        let env = Env::new().await;
+
+        let output = env.run(&[]);
+
+        assert_eq!(output.status.code(), Some(2));
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
     async fn invalid_config_exits_1() {
         let env = Env::new().await;
         fs::write(&env.config, "units = 3").unwrap();

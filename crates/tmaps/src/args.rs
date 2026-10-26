@@ -7,15 +7,16 @@ use tmaps_core::routing::Mode;
 
 use crate::time;
 
-/// Terminal maps with a route planner. The subcommands are a CLI for scripts and AI agents.
+/// Terminal maps with a route planner. Without a subcommand, tmaps shows the map. The
+/// subcommands are a CLI for scripts and AI agents.
 ///
 /// A LOCATION is "lat,lon", @place (see `tmaps places`), or free text. Free text resolves
 /// to the best geocoder match; add --strict to fail when the text matches more than one place.
 #[derive(Debug, Parser)]
-#[command(name = "tmaps", version, arg_required_else_help = true)]
+#[command(name = "tmaps", version)]
 pub struct Cli {
     #[command(subcommand)]
-    pub command: Command,
+    pub command: Option<Command>,
 
     /// Output format. Default: text on a terminal, JSON otherwise.
     #[arg(long, global = true, value_enum)]

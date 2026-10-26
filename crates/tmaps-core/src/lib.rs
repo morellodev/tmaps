@@ -5,8 +5,11 @@ pub mod error;
 pub mod geo;
 pub mod geocode;
 pub mod http;
+pub mod mvt;
 pub mod providers;
+pub mod render;
 pub mod routing;
+pub mod tiles;
 
 pub use error::{Error, Result};
 

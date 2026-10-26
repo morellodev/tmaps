@@ -1,0 +1,97 @@
+use std::collections::HashSet;
+use std::sync::{Arc, Mutex, PoisonError};
+
+use tmaps_core::mvt::Tile;
+use tmaps_core::render::PreparedTile;
+use tmaps_core::tiles::{TileId, TileSource};
+use tokio::sync::{Semaphore, mpsc};
+
+/// More parallel requests than a browser makes to one host would be unfair to a free server.
+const MAX_REQUESTS: usize = 6;
+
+#[derive(Debug)]
+pub enum Message {
+    Source(Result<SourceInfo, String>),
+    Tile(TileId, Result<Box<PreparedTile>, String>),
+    /// The tile left the screen before its request started.
+    Skipped(TileId),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SourceInfo {
+    pub max_zoom: u8,
+    pub attribution: String,
+}
+
+/// Loads tiles in background tasks and sends each result as a [`Message`].
+pub struct Loader {
+    source: Arc<TileSource>,
+    permits: Arc<Semaphore>,
+    wanted: Arc<Mutex<HashSet<TileId>>>,
+    sender: mpsc::UnboundedSender<Message>,
+}
+
+impl Loader {
+    pub fn new(source: TileSource, sender: mpsc::UnboundedSender<Message>) -> Self {
+        Self {
+            source: Arc::new(source),
+            permits: Arc::new(Semaphore::new(MAX_REQUESTS)),
+            wanted: Arc::default(),
+            sender,
+        }
+    }
+
+    pub fn load_source(&self) {
+        let (source, sender) = (Arc::clone(&self.source), self.sender.clone());
+        tokio::spawn(async move {
+            let info = source
+                .tile_set()
+                .await
+                .map(|tile_set| SourceInfo {
+                    max_zoom: tile_set.max_zoom,
+                    attribution: tile_set.attribution.clone(),
+                })
+                .map_err(|error| error.to_string());
+            let _ = sender.send(Message::Source(info));
+        });
+    }
+
+    /// Tiles that are not in `tiles` when their request can start are skipped.
+    pub fn set_wanted(&self, tiles: impl IntoIterator<Item = TileId>) {
+        let mut wanted = self.wanted.lock().unwrap_or_else(PoisonError::into_inner);
+        wanted.clear();
+        wanted.extend(tiles);
+    }
+
+    pub fn load(&self, id: TileId) {
+        let source = Arc::clone(&self.source);
+        let permits = Arc::clone(&self.permits);
+        let wanted = Arc::clone(&self.wanted);
+        let sender = self.sender.clone();
+        tokio::spawn(async move {
+            let Ok(_permit) = permits.acquire_owned().await else {
+                return;
+            };
+            let is_wanted = wanted
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .contains(&id);
+            let message = if is_wanted {
+                Message::Tile(id, prepare(&source, id).await)
+            } else {
+                Message::Skipped(id)
+            };
+            let _ = sender.send(message);
+        });
+    }
+}
+
+async fn prepare(source: &TileSource, id: TileId) -> Result<Box<PreparedTile>, String> {
+    let body = source.tile(id).await.map_err(|error| error.to_string())?;
+    tokio::task::spawn_blocking(move || {
+        Tile::decode(&body).map(|tile| Box::new(PreparedTile::new(&tile)))
+    })
+    .await
+    .map_err(|error| error.to_string())?
+    .map_err(|error| format!("tile {id}: {error}"))
+}

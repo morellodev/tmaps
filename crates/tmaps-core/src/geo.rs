@@ -26,6 +26,15 @@ impl LatLon {
         }
     }
 
+    /// Moves out-of-range values to the nearest valid coordinate.
+    #[must_use]
+    pub fn clamped(lat: f64, lon: f64) -> Self {
+        Self {
+            lat: lat.clamp(-90.0, 90.0),
+            lon: lon.clamp(-180.0, 180.0),
+        }
+    }
+
     #[must_use]
     pub fn lat(self) -> f64 {
         self.lat

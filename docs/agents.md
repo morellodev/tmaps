@@ -46,7 +46,7 @@ Errors go to stderr, in the output format: `{"schema": "tmaps/error@1", "error":
 | Exit | Kinds | Meaning |
 | --- | --- | --- |
 | 0 | | Success. |
-| 1 | `config`, `output` | The config file is not valid, the home directory is unknown, or stdout cannot be written. |
+| 1 | `config`, `output`, `map` | The config file is not valid, the home directory is unknown, stdout cannot be written, or the map failed. |
 | 2 | `invalid_input`, `ambiguous`, `usage` | An argument is not valid, a location is ambiguous with `--strict`, or no place matches the text. |
 | 3 | `no_route` | No route connects the points, a point is too far from a road, or the trip is longer than the server limit. |
 | 4 | `network`, `provider` | The request failed, or the server returned an error. |

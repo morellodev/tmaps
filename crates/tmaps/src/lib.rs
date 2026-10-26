@@ -115,18 +115,27 @@ struct Trip {
 }
 
 async fn execute(cli: Cli, format: Format) -> Result<(), CliError> {
+    if cli.command.is_none() && !(io::stdin().is_terminal() && io::stdout().is_terminal()) {
+        return Err(CliError::Usage(
+            "the map needs a terminal; to use tmaps from a script, run a subcommand (see --help)"
+                .to_owned(),
+        ));
+    }
     let config_path = match cli.config {
         Some(path) => path,
         None => Paths::detect()?.config_file(),
     };
     // Before the load, so that a place with an invalid value can be removed.
-    if let Command::Places {
+    if let Some(Command::Places {
         action: PlacesAction::Rm { name },
-    } = &cli.command
+    }) = &cli.command
     {
         places::remove(&config_path, name)?;
     }
     let config = Config::load(&config_path)?;
+    let Some(command) = cli.command else {
+        return Ok(tmaps_tui::run(&config, &Paths::detect()?).await?);
+    };
     let client = http::client()?;
     let context = Context {
         format,
@@ -138,7 +147,7 @@ async fn execute(cli: Cli, format: Format) -> Result<(), CliError> {
         config,
         config_path,
     };
-    match cli.command {
+    match command {
         Command::Geocode { query, near, limit } => context.geocode(query, near, limit).await,
         Command::Reverse { location } => context.reverse(&location).await,
         Command::Route(args) => context.route(&args).await,

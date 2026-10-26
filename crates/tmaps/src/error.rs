@@ -15,6 +15,8 @@ pub enum CliError {
     },
     #[error("{0}")]
     Usage(String),
+    #[error(transparent)]
+    Map(#[from] tmaps_tui::Error),
     #[error("cannot write output: {0}")]
     Output(#[from] io::Error),
 }
@@ -22,18 +24,19 @@ pub enum CliError {
 impl CliError {
     pub fn kind(&self) -> &'static str {
         match self {
-            Self::Core(error) => error.kind(),
+            Self::Core(error) | Self::Map(tmaps_tui::Error::Core(error)) => error.kind(),
             Self::Ambiguous { .. } => "ambiguous",
             Self::Usage(_) => "usage",
+            Self::Map(_) => "map",
             Self::Output(_) => "output",
         }
     }
 
     pub fn exit_code(&self) -> u8 {
         match self {
-            Self::Core(error) => error.exit_code(),
+            Self::Core(error) | Self::Map(tmaps_tui::Error::Core(error)) => error.exit_code(),
             Self::Ambiguous { .. } | Self::Usage(_) => 2,
-            Self::Output(_) => 1,
+            Self::Map(_) | Self::Output(_) => 1,
         }
     }
 

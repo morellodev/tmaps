@@ -1,0 +1,85 @@
+---
+source: crates/tmaps-core/tests/render.rs
+expression: "snapshot(MILAN_Z14, 14.0)"
+---
+               ⢣              ⠈⠉⠑⡗⠢⠤⢄⣀⣀⠈⠉⠙⠒⠢⠤⢄⡜⣿⡦⡷⠏⠉⠓⢦⣀                       ⡰ ⡏⡳⠤⡀         ⢠⠊     
+                ⠙⡄               ⡇     ⠉⠉⠒⠤⢄ ⢀⣼⣟⡞     ⠉⠓⢦⣀                   ⡰⠁⢠⠟⢠⠃⠈⠑⠢⣀     ⣰⠁      
+                 ⠈⢆              ⢱          ⠉⣿⡟⠋⠈⠢⡀      ⠈⠛⠦                ⡰⠁⢠⠧⣠⠊     ⠑⠤⡀⢀⠜ ⠁⠢⣀    
+                   ⢣             ⢸         ⢀⠞     ⠑⢄                       ⡰⠁⢠⠃⢠⠃        ⡸⠃     ⠑⠤⡀ 
+                    ⠱⡀           ⢸        ⡰⠃        ⠑⢄                    ⡜ ⡠⠃⡰⠁       ⢀⠜         ⠈⠑
+                     ⠈⢢          ⡎      ⣠⠞⠁      ⢀⡀   ⠱⡀              ⢀⡠⠤⠚ ⣠⣃⡰⠁       ⡠⠊            
+                       ⠑⢄       ⢸⠢⢄    ⣴⠋       ⡠⠃⠈⢢   ⠈⢢          ⢀⡠⠤⠒⠒⠒⠒⢻⡇ ⠁      ⢠⠊              
+                ⢤       ⠈⠢⡀    ⢀⠇  ⠉⠢⢤⡾⠊      ⡠⠊    ⢑⡄   ⠑⢄   ⢀⣀⠤⠒⠉⠁   ⣀⡠⠴⠒⡇       ⡰⠁             ⡠⠊
+⣀⣀⠤⠤⡄            ⠑⡄       ⠘⢄   ⡜    ⣰⠟⠁     ⡠⠊⠢⣀  ⡠⠒⠁⠈⠢⡀  ⠈⠢⡔⠊⠁  ⢀⣀⠤⠔⠒⠉    ⠸⡀    ⢀⠾⡀           ⢀⣀⡶⠥⠤
+⠁   ⢸             ⠈⢆        ⠣⡠⠎   ⢀⡼⠃     ⡠⠊   ⢈⡢⠊     ⡱⠄   ⠈⠢⡔⠒⠉⠁        ⢀⡠⢧  ⢀⠤⠃ ⠑⢄⡀⢀⣀⡠⠤⠔⢖⠒⠉⠉⠁⠈⡆  
+⢠    ⡇              ⠣⡀    ⣀⠔⠉    ⣠⡟     ⢠⠊    ⡔⠁    ⢀⡠⠊       ⠘⢄     ⣀⡠⠔⠒⠉⠁  ⠣⡠⠃     ⠙⡅    ⠸⡀    ⢣  
+⠈⡖⠒⠒⠉⢹               ⠑⢄ ⡠⠔⠁     ⡴⠃⠈⠢⡀ ⢀⠔⠁  ⡠⠔⠉    ⢀⠔⠁           ⠑⣤⠔⠒⠉        ⡔⠁       ⢱     ⡇    ⠘⡄ 
+⠉⢸    ⡇              ⢀⠜⠊      ⣠⠎⠑⠤⡀ ⠈⠑⢅  ⡠⠊⠁    ⡠⠊⠁           ⢀⡠⠊⠉⠢⡀       ⢀⠎         ⠈⡆    ⢸     ⢣ 
+ ⠈⡆   ⠸⡀      ⣀⣀⣀⣠⠤⠔⠊⠁ ⢀⢄   ⢀⡔⠁   ⠈⠢⡀  ⠑⢎    ⢀⠤⠊            ⣀⠔⠁    ⠑⡄     ⡠⠃       ⡤⠤⠤⠤⢵     ⡇  ⣀⣀⠼⣀
+⣀⠤⠧⠤⠤⠤⠒⢗⠒⠒⠊⠉⠉⠉   ⢸   ⡠⠒⠁ ⠑⠢⡠⠋       ⠈⠲⡀  ⠑⡄⣀⠔⠁           ⢀⡠⠊        ⠈⢆   ⡔⠁        ⢳   ⠈⣦⠤⠤⠒⠒⠊⠉⠉   ⢇
+       ⠈⡆         ⡇⢠⠊    ⢀⡜⠁          ⢹   ⠈⠢⡀          ⡠⠔⠁            ⠱⣀⠜          ⠈⢆ ⡔⠊           ⠸
+        ⠸⡀      ⢀⣀⠟⢅    ⣠⠎            ⠘⣄    ⠘⢄      ⢀⠤⠊               ⡰⠉⢆         ⢀⡠⠜⠊              
+         ⠱⣀⡠⠤⠔⠒⠉⠁   ⠉⠦⡀⡴⢇              ⠘⡄     ⠱⡀  ⢠⠴⡁                ⡰⠁ ⠈⢆   ⣀⡠⠤⠒⠊⠁                 
+          ⠈⠢⡀        ⢀⠞  ⠉⠒⠤⢄           ⠈⢆     ⠈⣢⠒⠁ ⠑⡄              ⡔⠁   ⠈⢳⠊⠉                       
+            ⠈⠢⡀     ⡰⠋       ⠙⡄          ⠈⠲⡀ ⢀⠔⠉ ⠑⢄  ⠈⢆           ⢀⠞       ⢣                        
+              ⠈⠢⡀ ⢀⠞⠁         ⠈⢆           ⣑⠮⢵    ⠈⠢⡀  ⠳⡀        ⢠⠃         ⢣                       
+                ⠈⣢⠋            ⢈⣆       ⢀⡠⠊   ⢇     ⠉⠢⡠⠔⠉⠣⡀     ⢠⠃        ⠈⢆ ⢣                ⢀⣀⡠⠤⠔⠒
+⢆          ⣠   ⢀⠞⠋⠳⢄⡀        ⡤⠒⠉⠈⢦     ⡔⠁     ⠘⡄      ⠑⡄  ⠘⢄   ⢠⡎          ⠈⢆ ⢣       ⣀⣀⣠⠤⠤⠒⠊⠉⠁     
+⠈⢣       ⢀⡎ ⠉⢲⠴⠋    ⠈⠲⢄⣀⣀⡠⠒⠉⠉⠑⠒⠒⠢⢎   ⣀⠤⠧⠤⠤⠤⠤⠤⠤⢄⣱⣀⣀⣀⣀⣀⣀⣀⣈⢢  ⢸  ⢰⡳⠁        ⢀⣀⣀⢼⠤⠜⡖⠒⠒⠊⠉⠉⠉  ⠈⡆          
+  ⢣    ⢀⡠⠊  ⡰⠋                   ⢈⢟⠋⠉           ⢇       ⠉⠉⠉⠉⠉⠉⠉⠙⠒⠒⠒⠒⠒⠒⢲⠊⠉⠁  ⠸⡀⢰⠁         ⢸          
+   ⢳ ⢀⠔⠁  ⢀⡜⠣⡄                  ⡠⠊⠈⢆            ⠸⡀                  ⢰⠒⢺⡀    ⢸ ⢸           ⢇        ⢀
+⣀⣀⣀⠤⡏⠁   ⣠⠎  ⡇                ⢀⠔⠁  ⠈⡆            ⢣                  ⡜  ⡇    ⢸ ⢸           ⣸⣀⠤⠤⠒⠒⠉⢹⠉⠁
+    ⠈⠑⢄⡀⣰⡏   ⡇               ⡰⠊     ⠘⡄           ⠈⡆                 ⠉⠉⠉⢱    ⢸ ⢸    ⢀⣀⡠⠔⠒⠊⠉ ⢣     ⠘⡄ 
+      ⢀⣵⣁⡇   ⡇               ⠘⠢⡀     ⢱⡀           ⠸⡀          ⢰⠉⠉⢱⠖⠒⠒⠒⠤⠼⡦⠤⠤⠤⡼⠤⢼⠒⠒⠊⠉⠁       ⠘⡄     ⢇ 
+⠛⠛⠛⠛⠛⢛⠏⠁ ⡇   ⡇                 ⠈⠢⡀    ⢱                       ⡜  ⢸      ⢸  ⢰⠁ ⡎             ⢹⣀⣀⡠⠤⠤⠜⠒
+    ⠠⠊   ⡇   ⡇                   ⠈⠢⣄⠠⠂⠁                     ⢠⠊   ⢸      ⢸⣀ ⡎ ⢸               ⡇      
+         ⡏⠉⠉⠉⡇                                             ⡜⠁    ⢸     ⢠⠇⠈⠉ ⢠⠃     ⢀⣀⣀⠤⠤⠤⠒⠒⠒⠉⢇      
+⡀        ⡇   ⠁                                     ⢠⠤⠒⢦  ⢀⠎      ⠜    ⢀⠎   ⢀⠯⠤⠔⠒⠊⠉⠉⠁         ⢸      
+⢷⣄       ⡇                                         ⢸  ⠈⢢⡤⠃           ⢀⠎    ⡎                 ⠈⡆     
+⠋⠙⢗⣤⡀    ⡇                                       ⢰⠒⠊  ⡠⠊            ⢠⠎    ⡸ ⢀⣀⡠⠤⠤⡆            ⢇     
+  ⢀⡿⢝⢦⡀  ⡇                            ⢰          ⢸   ⡔⠁            ⡠⠃    ⣠⠋⠉⠁    ⢸            ⢸     
+⢀⠔⠋  ⠉⢻⣦⡀⡇                            ⢸⣀⣀    ⢠   ⢸  ⡜⠈⠑⠢⢄⡀        ⡰⠁   ⢀⠔⠁        ⡇           ⠘⡄    
+⢧⡀    ⡴⠓⢻⡇                            ⢸⠁ ⢱⠊⠉⠉⠁    ⠑⡶⠁    ⠈⠑⠢⢄⡀   ⡜    ⢠⠊          ⢸       ⢀⣀⣀⣀⣀⡇    
+ ⠑⠤⡀⣠⠞  ⢸⣇⣀⣀⡀⢀⣀⣀⣀⡀                    ⢸⣶⣶⣭⣷⣶⣤⡀   ⡠⠎          ⠈⠉⠒⠪⠤⢄⣀ ⣰⠁   ⣀⣀⣀⡠⠤⠤⠔⠒⠒⡗⠒⠊⠉⠉⠉⠉⠁         
+  ⢀⡿⠁   ⢸⡇ ⢀⡔⠁   ⠸⡄                  ⢀⣸⠁     ⢳⢀⡴⠋  ⢀⣀⣀⣀⣀⣀⣀⣀         ⡝⠙⠓⠶⢎⡉         ⡇                
+
+               m              mmmmmmmmmmmmmmmmmmmmmmmmm           gggggg     grgmmmmgggggggggmm     
+                mm     gg  ggggg m     mmmmm mmmm     mmmm        gggggggggggrrmmmmmmmmgggg mm      
+                 mm    ggggggggggm          mmmmmmm      mmm      gggggggggwrrmmmm     mmmmm mmm    
+              g    m    gggggg ggm         mm     mm              gggwwggggrrmmmm        mm     mmm 
+               g g  mm   ggg g g m        mm        mm             ggwggwgrgmmmm       mm         mm
+   g     gg    gggg  mm  gg      m      mmt      mm   mm           gggrrrrgmmmm       mm  g   gg    
+        gggggggggggg   mm       mmm    mm       mmmm   mm          mmmmmmmmmgm      mm    gggggg    
+         ggggg  m  ggg  mmm    mm  mmmmm      mm    mm   mm   mmmmmmgggmmmmm       mm    ggg ggg  mm
+mmmmm  ggggggg   mm       mm   m    mmm     mmmm  mmmmmm  mmmmm gmmmmmm   gmm    mmm    gggg  gmmmmm
+m   m   ggggggg   mm        mmm   tmm     mm   mmm     mm   mmmmmm        mmm  mmm mmmmmmmmmmmmmmm  
+m    m  ggggg       mm    mmm    mm     mm    mm    mmm       mm     mmmmmm  mmm     mm    mm    m  
+mmmmmm   ggg         mm mmm     mmmmm mmm  mmm    mmm           mmmmm        mm       m     m    mm 
+mm    m              mmm      mmmmm mmm  mmm    mmm           mmmmmm       mm         mm    m     m 
+ mm   mm      mmmmmmmm mm   tmm   mmm  mm    mmm            mmm    mm     mm       mmmmm     m  mmmm
+mmmmmmmmmmmmmm   mgg mmm mmmm   gg  mmm  mmmmm           mmm        mm   mm        m   mmmmmmmmm   m
+       mm         mmm    tmm   ggg    m   mmm          mmm            mmm          mm mmg          m
+        mm      mmmm    mm   gggggg   mm    mm      mmm               mmm         mmmmg             
+         mmmmmmmm   mmmmm    g ggg g   mm     mm  mmm                mm mm   mmmmmmggggg            
+          mmm        mm  mmmm   ggggg   mm     mmmm mm              mm   mmmm  ggggggggg            
+            mmm     mm       mm   gggw   mmm mmm mm  mm           mm       m  gggggggggg            
+              mmm mmt         mm   ggggg   mmm    mmm  mm        mm         m   ggggg               
+                mmm            mm  ggg  mmm   m     mmmmmmm     mm        mm m                mmmmmm
+m  g       m   mmmmmm        mmmmm     mm     mm      mm  mm   mm          mm m       mmmmmmmmm     
+mm  g    mm mmmm g  mmmmmmmmmmmmmmgggmmmmmmmmmmmmmmmmmmmm  m  mmm        mmmmmmmmmmmmm  mm      gggg
+  m    mmm  mm                   mmmm           m       mmmmmmmmmmmmmmmmmm  mmmm         m      gggg
+   m mmm  mmmm                  mmmm            mm                  mmmm    m m           m      g m
+mmmmmm   mm  m                mmm  mm            m                  m  m    m m           mmmmmmmmmm
+    mmmmmm   m               mm     mm           mm                 mmmm    m m    mmmmmmm m     mm 
+      tmmm   m               mmm     mm           mm          mmmmmmmmmmmmmmmmmmmmmm       mm     m 
+mmmmmmmm m   m                 mmm    m                       m  m      m  mm m             mmmmmmmm
+    mm   m   m                   mmmmmm                     mm   m      mm m m             ggm      
+         mmmmm                                             mm    m     mmmm mm     mmmmmmmmmmm      
+t        m   m                                     mmmm  mm      m    mm   mmmmmmmmm         m      
+mt       m                                         m  mmmm           mm    m                 mm     
+mmmtt    m                                       mmm  mm            mm    m mmmmmm   gggggggggm     
+  mmmtt  mg                           m          m   mm            mm    mmmm    m   gggggggggm     
+mmm  mmmtmg                           mmm    m   mggmmmmmm        mm   mmm        m   ggggggggmm    
+mt    mmmm                            mm mmmmm    mmm    mmmmm   m    mm          m    gggmmmmmm    
+ mmmmm  tmmmmttttt                    mmmmmmmt   mmg         mmmmmmm mm   mmmmmmmmmmmmmmmmm     g   
+  mmm   mt ttt   tt                  mmt     mmmmg tttttttt         mmmmmm         m
