@@ -695,7 +695,7 @@ fn status_lines(app: &App, status: Status, width: u16) -> (Line<'static>, Line<'
     let notice = notice_spans(app, palette);
     let route = route_spans(app, status);
     let work = work_spans(app, status);
-    let hints = hints(app);
+    let hints = hints(app, status);
     let last_hint = &hints[hints.len().saturating_sub(1)..];
     let view = app.view();
     let position = format!("{}  z{:.1}", coordinates(view.center()), view.zoom());
@@ -805,7 +805,7 @@ fn spinner(app: &App) -> char {
 
 /// The keys for what has the keys now. The last hint opens or closes the help, or closes the
 /// box, so the status line keeps it longest.
-fn hints(app: &App) -> &'static [Hint] {
+fn hints(app: &App, status: Status) -> &'static [Hint] {
     if app.help() && app.help_overflow() > 0 {
         return &[("↑↓", "scroll"), ("Esc", "close")];
     }
@@ -822,6 +822,13 @@ fn hints(app: &App) -> &'static [Hint] {
             ("s", "start"),
             ("e", "end"),
             ("'", "places"),
+            ("?", "keys"),
+        ],
+        // A short terminal hides the panel, so `p` cannot show it.
+        None if app.panel_visible() && !status.panel_shown => &[
+            ("Tab", "route"),
+            ("] [", "step"),
+            ("c", "clear"),
             ("?", "keys"),
         ],
         None => &[
@@ -1314,6 +1321,20 @@ mod tests {
     fn hidden_drawer_puts_the_route_in_the_status_line() {
         let text = screen(80, 14, &app_with_routes());
         assert!(text.lines().last().unwrap().contains("route 1/2: 2 min"));
+    }
+
+    #[test]
+    fn hidden_drawer_drops_the_panel_hint() {
+        let text = screen(99, 14, &app_with_routes());
+        assert!(!text.lines().last().unwrap().contains("p panel"));
+    }
+
+    #[test]
+    fn panel_hidden_with_p_keeps_the_panel_hint() {
+        let mut app = app_with_routes();
+        type_keys(&mut app, "p");
+        let text = screen(99, 14, &app);
+        assert!(text.lines().last().unwrap().contains("p panel"));
     }
 
     #[test]
