@@ -21,6 +21,7 @@ use tmaps_core::routing::{Maneuver, Mode, Route, Step};
 use crate::app::{App, Level};
 use crate::palette::Palette;
 use crate::prompt::Prompt;
+use crate::regions::{ListRegion, Regions};
 use crate::trip::{Routes, Trip, Waypoint};
 
 const STATUS_HEIGHT: u16 = 1;
@@ -63,6 +64,8 @@ const HELP: [HelpGroup; 4] = [
             ("/", "search"),
             ("m", "save the place at +"),
             ("'", "go to a saved place"),
+            ("Ctrl-U", "clear the typed text"),
+            ("Ctrl-W", "remove the last word"),
         ],
     ),
     (
@@ -137,11 +140,11 @@ pub fn map_size(width: u16, height: u16, panel: bool) -> (u16, u16) {
     (map.width, map.height)
 }
 
-pub fn draw(frame: &mut Frame, app: &App, palette: Palette, units: Units) {
+pub fn draw(frame: &mut Frame, app: &App, palette: Palette, units: Units) -> Regions {
     let area = frame.area();
     if area.width < MIN_WIDTH || area.height < MIN_HEIGHT {
         draw_too_small(frame, area);
-        return;
+        return Regions::default();
     }
     let areas = areas(area, app.panel_visible());
     let trip = app.trip();
@@ -166,25 +169,32 @@ pub fn draw(frame: &mut Frame, app: &App, palette: Palette, units: Units) {
         areas.map,
     );
     let spinner = spinner(app);
-    if let Some(panel) = areas.panel {
-        draw_panel(frame, trip, palette, units, spinner, panel);
-    }
+    let steps = areas
+        .panel
+        .and_then(|panel| draw_panel(frame, trip, palette, units, spinner, panel));
     let status = Status {
         palette,
         units,
         panel_shown: areas.panel.is_some(),
     };
     draw_status(frame, app, status, areas.status);
-    if let Some(prompt) = app.prompt() {
+    let prompt_items = app.prompt().map(|prompt| {
         draw_prompt(
             frame,
             &prompt_view(prompt, app, palette, units, spinner),
             palette,
             areas.map,
-        );
-    }
-    if app.help() {
-        draw_help(frame, app.help_scroll(), palette, help_area(area));
+        )
+    });
+    let help = app
+        .help()
+        .then(|| draw_help(frame, app.help_scroll(), palette, help_area(area)));
+    Regions {
+        map: areas.map,
+        panel: areas.panel,
+        steps,
+        prompt_items,
+        help,
     }
 }
 
@@ -303,6 +313,7 @@ impl Widget for MapWidget<'_> {
     }
 }
 
+/// Returns the step list, when the panel shows one.
 fn draw_panel(
     frame: &mut Frame,
     trip: &Trip,
@@ -310,7 +321,7 @@ fn draw_panel(
     units: Units,
     spinner: char,
     area: Rect,
-) {
+) -> Option<ListRegion> {
     let mut block = Block::bordered()
         .title(" Route ")
         .title_style(Style::new().add_modifier(Modifier::BOLD))
@@ -388,30 +399,49 @@ fn draw_panel(
         ]))
     };
     frame.render_widget(Paragraph::new(summary), summary_area);
-    if let Some((route, step)) = trip.selected() {
-        let width = steps_area.width.saturating_sub(selected_width());
-        let steps: Vec<ListItem> = route
-            .steps
-            .iter()
-            .map(|step| step_item(step, units, (width, steps_area.height), palette))
-            .collect();
-        let heights: Vec<usize> = steps.iter().map(ListItem::height).collect();
-        let mut state = ListState::default().with_selected(step);
-        frame.render_stateful_widget(
-            selectable(steps, palette).scroll_padding(1),
-            steps_area,
-            &mut state,
-        );
-        let top = heights[..state.offset().min(heights.len())].iter().sum();
-        draw_scrollbar(
-            frame,
-            palette,
-            Style::new().fg(palette.muted()),
-            area,
-            steps_area,
-            heights.iter().sum(),
-            top,
-        );
+    let (route, step) = trip.selected()?;
+    Some(draw_steps(
+        frame, route, step, units, palette, area, steps_area,
+    ))
+}
+
+/// Draws the steps in `rows`, with a scrollbar on the border of `block`.
+fn draw_steps(
+    frame: &mut Frame,
+    route: &Route,
+    step: Option<usize>,
+    units: Units,
+    palette: Palette,
+    block: Rect,
+    rows: Rect,
+) -> ListRegion {
+    let width = rows.width.saturating_sub(selected_width());
+    let steps: Vec<ListItem> = route
+        .steps
+        .iter()
+        .map(|step| step_item(step, units, (width, rows.height), palette))
+        .collect();
+    let heights: Vec<usize> = steps.iter().map(ListItem::height).collect();
+    let mut state = ListState::default().with_selected(step);
+    frame.render_stateful_widget(
+        selectable(steps, palette).scroll_padding(1),
+        rows,
+        &mut state,
+    );
+    let top = heights[..state.offset().min(heights.len())].iter().sum();
+    draw_scrollbar(
+        frame,
+        palette,
+        Style::new().fg(palette.muted()),
+        block,
+        rows,
+        heights.iter().sum(),
+        top,
+    );
+    ListRegion {
+        area: rows,
+        offset: state.offset(),
+        heights,
     }
 }
 
@@ -993,7 +1023,8 @@ fn box_block(title: &'static str, palette: Palette) -> Block<'static> {
 }
 
 /// Draws the prompt at the top of the map, so the place at the crosshair stays visible.
-fn draw_prompt(frame: &mut Frame, view: &PromptView, palette: Palette, area: Rect) {
+/// Returns the list of items.
+fn draw_prompt(frame: &mut Frame, view: &PromptView, palette: Palette, area: Rect) -> ListRegion {
     let width = PROMPT_WIDTH.min(area.width);
     let mut block = box_block(view.title, palette).padding(Padding::horizontal(1));
     if let Some(count) = &view.count {
@@ -1049,6 +1080,11 @@ fn draw_prompt(frame: &mut Frame, view: &PromptView, palette: Palette, area: Rec
     let mut state = ListState::default().with_selected(view.selected);
     frame.render_stateful_widget(selectable(items, palette), items_area, &mut state);
     frame.render_widget(Paragraph::new(note), note_area);
+    ListRegion {
+        area: items_area,
+        offset: state.offset(),
+        heights: vec![1; view.items.len()],
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1168,8 +1204,8 @@ pub fn help_overflow(width: u16, height: u16) -> usize {
     rows.saturating_sub(usize::from(area.height.saturating_sub(2)))
 }
 
-/// `scroll` is the number of rows above the visible part.
-fn draw_help(frame: &mut Frame, scroll: usize, palette: Palette, area: Rect) {
+/// `scroll` is the number of rows above the visible part. Returns the area of the box.
+fn draw_help(frame: &mut Frame, scroll: usize, palette: Palette, area: Rect) -> Rect {
     let key_width = help_key_width();
     let columns = help_layout(area);
     let (width, height) = help_size(&columns, key_width);
@@ -1200,6 +1236,7 @@ fn draw_help(frame: &mut Frame, scroll: usize, palette: Palette, area: Rect) {
     }
     let track = Style::new().fg(palette.route());
     draw_scrollbar(frame, palette, track, popup, inner, rows, scroll);
+    popup
 }
 
 #[cfg(test)]
@@ -1214,6 +1251,7 @@ mod tests {
 
     use super::*;
     use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
+    use ratatui::layout::Position;
 
     use tmaps_core::geocode::Place;
 
@@ -1328,13 +1366,18 @@ mod tests {
     }
 
     fn screen(width: u16, height: u16, app: &App) -> String {
+        render(width, height, app).0
+    }
+
+    fn render(width: u16, height: u16, app: &App) -> (String, Regions) {
         let palette = Palette::new(Depth::Mono, Shade::Dark);
         let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
+        let mut regions = Regions::default();
         terminal
-            .draw(|frame| draw(frame, app, palette, Units::Metric))
+            .draw(|frame| regions = draw(frame, app, palette, Units::Metric))
             .unwrap();
         let buffer = terminal.backend().buffer();
-        buffer
+        let text = buffer
             .content()
             .chunks(usize::from(width))
             .map(|row| {
@@ -1343,7 +1386,8 @@ mod tests {
                     .collect::<String>()
                     + "\n"
             })
-            .collect()
+            .collect();
+        (text, regions)
     }
 
     /// An app with a start, an end, and two routes from Milan to Rome.
@@ -1411,6 +1455,21 @@ mod tests {
     }
 
     #[test]
+    fn step_region_finds_the_step_on_a_scrolled_list() {
+        let milan = LatLon::new(45.4642, 9.19).unwrap();
+        let mut app = app_with_steps(&[milan; 30]);
+        type_keys(&mut app, &"]".repeat(21));
+        let (text, regions) = render(120, 20, &app);
+        let row = text
+            .lines()
+            .position(|line| line.contains("step 20"))
+            .unwrap();
+        let steps = regions.steps.unwrap();
+        let row = u16::try_from(row).unwrap();
+        assert_eq!(steps.item_at(Position::new(steps.area.x, row)), Some(20));
+    }
+
+    #[test]
     fn drawer_shows_the_steps_next_to_the_summary() {
         let text = screen(80, 24, &app_with_routes());
         assert!(
@@ -1441,8 +1500,8 @@ mod tests {
 
     #[test]
     fn help_overflow_counts_the_hidden_rows() {
-        // 15 rows of keys, and 11 visible rows: 13 above the status line, less the borders.
-        assert_eq!(help_overflow(44, 14), 4);
+        // 17 rows of keys, and 11 visible rows: 13 above the status line, less the borders.
+        assert_eq!(help_overflow(44, 14), 6);
     }
 
     fn type_keys(app: &mut App, keys: &str) {

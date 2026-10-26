@@ -6,6 +6,7 @@ use crossterm::event::{
     Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
 };
 use lru::LruCache;
+use ratatui::layout::{Position, Rect};
 use tmaps_core::LatLon;
 use tmaps_core::places::validate_name;
 use tmaps_core::render::{
@@ -16,6 +17,7 @@ use tmaps_core::tiles::TileId;
 
 use crate::message::{Message, SourceInfo};
 use crate::prompt::{self, Prompt, Search};
+use crate::regions::Regions;
 use crate::services::Request;
 use crate::trip::{End, Routes, Trip};
 
@@ -45,6 +47,7 @@ pub struct App {
     help_overflow: usize,
     quit: bool,
     drag_from: Option<(u16, u16)>,
+    regions: Regions,
     trip: Trip,
     panel: bool,
     prompt: Option<Prompt>,
@@ -92,6 +95,7 @@ impl App {
             help_overflow: 0,
             quit: false,
             drag_from: None,
+            regions: Regions::default(),
             trip: Trip::default(),
             panel: true,
             prompt: None,
@@ -116,6 +120,11 @@ impl App {
 
     pub fn set_map_size(&mut self, width: u16, height: u16) {
         self.map_size = (width, height);
+    }
+
+    /// Where the last frame drew the parts that take mouse clicks.
+    pub fn set_regions(&mut self, regions: Regions) {
+        self.regions = regions;
     }
 
     pub fn help(&self) -> bool {
@@ -405,10 +414,10 @@ impl App {
             }
             KeyCode::Esc => self.help = false,
             KeyCode::Up | KeyCode::Char('k') if self.help && self.help_overflow > 0 => {
-                self.help_scroll = self.help_scroll.saturating_sub(1);
+                self.scroll_help(-1);
             }
             KeyCode::Down | KeyCode::Char('j') if self.help && self.help_overflow > 0 => {
-                self.help_scroll = (self.help_scroll + 1).min(self.help_overflow);
+                self.scroll_help(1);
             }
             KeyCode::Left | KeyCode::Char('h') => self.pan_screens(-step, 0.0),
             KeyCode::Right | KeyCode::Char('l') => self.pan_screens(step, 0.0),
@@ -552,37 +561,98 @@ impl App {
     }
 
     fn on_mouse(&mut self, mouse: MouseEvent) -> bool {
-        let position = (mouse.column, mouse.row);
+        let position = Position::new(mouse.column, mouse.row);
+        if mouse.kind == MouseEventKind::Up(MouseButton::Left) {
+            self.drag_from = None;
+            return false;
+        }
+        if self.prompt.is_some() {
+            return self.on_prompt_mouse(mouse.kind, position);
+        }
+        let over = |area: Option<Rect>| area.is_some_and(|area| area.contains(position));
+        let on_help = self.help && over(self.regions.help);
+        let scrolls_help = on_help && self.help_overflow > 0;
+        let on_panel = !on_help && over(self.regions.panel);
+        let on_map = !scrolls_help && self.regions.map.contains(position);
         match mouse.kind {
-            MouseEventKind::ScrollUp => self.view = self.view.zoom_by(1.0),
-            MouseEventKind::ScrollDown => self.view = self.view.zoom_by(-1.0),
+            MouseEventKind::ScrollUp if scrolls_help => return self.scroll_help(-1),
+            MouseEventKind::ScrollDown if scrolls_help => return self.scroll_help(1),
+            MouseEventKind::ScrollUp if on_panel => self.show_step(-1),
+            MouseEventKind::ScrollDown if on_panel => self.show_step(1),
+            MouseEventKind::ScrollUp if on_map => self.view = self.view.zoom_by(1.0),
+            MouseEventKind::ScrollDown if on_map => self.view = self.view.zoom_by(-1.0),
             MouseEventKind::Down(MouseButton::Left) => {
-                self.drag_from = Some(position);
-                return false;
+                let drags = on_map && !on_help;
+                self.drag_from = drags.then_some((mouse.column, mouse.row));
+                let step = self
+                    .regions
+                    .steps
+                    .as_ref()
+                    .and_then(|steps| steps.item_at(position).filter(|_| on_panel));
+                let Some(location) = step.and_then(|index| self.trip.select_step(index)) else {
+                    return false;
+                };
+                self.center_on_step(location);
             }
             MouseEventKind::Drag(MouseButton::Left) => {
-                let Some((column, row)) = self.drag_from.replace(position) else {
+                let Some((column, row)) = self.drag_from.replace((mouse.column, mouse.row)) else {
                     return false;
                 };
                 // The map follows the pointer, so the view moves the other way.
                 self.view = self.view.pan(
-                    (f64::from(column) - f64::from(position.0)) * f64::from(DOTS_PER_CELL_X),
-                    (f64::from(row) - f64::from(position.1)) * f64::from(DOTS_PER_CELL_Y),
+                    (f64::from(column) - f64::from(mouse.column)) * f64::from(DOTS_PER_CELL_X),
+                    (f64::from(row) - f64::from(mouse.row)) * f64::from(DOTS_PER_CELL_Y),
                 );
-            }
-            MouseEventKind::Up(MouseButton::Left) => {
-                self.drag_from = None;
-                return false;
             }
             _ => return false,
         }
         true
     }
 
+    /// The wheel moves the selection like the arrows. A click selects an item, and a click on
+    /// the selected item chooses it like Enter.
+    fn on_prompt_mouse(&mut self, kind: MouseEventKind, position: Position) -> bool {
+        let key = match kind {
+            MouseEventKind::ScrollUp => KeyCode::Up,
+            MouseEventKind::ScrollDown => KeyCode::Down,
+            MouseEventKind::Down(MouseButton::Left) => {
+                let item = self
+                    .regions
+                    .prompt_items
+                    .as_ref()
+                    .and_then(|items| items.item_at(position));
+                let selected = self.prompt.as_mut().and_then(Prompt::selected_mut);
+                let (Some(item), Some(selected)) = (item, selected) else {
+                    return false;
+                };
+                if *selected != item {
+                    *selected = item;
+                    return true;
+                }
+                KeyCode::Enter
+            }
+            _ => return false,
+        };
+        self.on_prompt_key(KeyEvent::from(key))
+    }
+
+    /// Returns `true` when the help moved.
+    fn scroll_help(&mut self, delta: isize) -> bool {
+        let scroll = self
+            .help_scroll
+            .saturating_add_signed(delta)
+            .min(self.help_overflow);
+        std::mem::replace(&mut self.help_scroll, scroll) != scroll
+    }
+
     fn show_step(&mut self, delta: isize) {
         if let Some(location) = self.trip.move_step(delta) {
-            self.view = View::new(location, self.view.zoom().max(STEP_ZOOM));
+            self.center_on_step(location);
         }
+    }
+
+    fn center_on_step(&mut self, location: LatLon) {
+        self.view = View::new(location, self.view.zoom().max(STEP_ZOOM));
     }
 
     /// Pans by a fraction of the map width and height.
@@ -616,6 +686,7 @@ mod tests {
     use tmaps_core::geocode::Place;
 
     use super::*;
+    use crate::regions::ListRegion;
     use crate::trip::sample_route;
 
     fn milan() -> LatLon {
@@ -625,6 +696,10 @@ mod tests {
     fn ready_app() -> App {
         let mut app = App::new(View::new(milan(), 14.0));
         app.set_map_size(100, 40);
+        app.set_regions(Regions {
+            map: Rect::new(0, 0, 100, 40),
+            ..Regions::default()
+        });
         app.wants_source(Instant::now());
         app.receive(
             Message::Source(Ok(SourceInfo {
@@ -745,6 +820,95 @@ mod tests {
         assert_eq!(app.view(), View::new(step, STEP_ZOOM));
     }
 
+    /// A map on the left, and a panel with one row for each step on the right.
+    fn split_regions(steps: usize) -> Regions {
+        Regions {
+            map: Rect::new(0, 0, 60, 40),
+            panel: Some(Rect::new(60, 0, 40, 40)),
+            steps: Some(ListRegion {
+                area: Rect::new(61, 10, 38, 29),
+                offset: 0,
+                heights: vec![1; steps],
+            }),
+            ..Regions::default()
+        }
+    }
+
+    fn app_with_steps(steps: &[LatLon]) -> App {
+        let mut app = ready_app();
+        let id = route_id(&plan_route(&mut app));
+        app.receive(
+            Message::Routes(id, Ok(vec![sample_route(steps)])),
+            Instant::now(),
+        );
+        app.set_regions(split_regions(steps.len()));
+        app
+    }
+
+    #[test]
+    fn click_on_a_step_centers_the_map_on_it() {
+        let step = LatLon::new(45.47, 9.2).unwrap();
+        let mut app = app_with_steps(&[milan(), step]);
+        app.handle(&mouse(MouseEventKind::Down(MouseButton::Left), 70, 11));
+        assert_eq!(app.view(), View::new(step, STEP_ZOOM));
+    }
+
+    #[test]
+    fn wheel_over_the_panel_shows_the_next_step() {
+        let step = LatLon::new(45.47, 9.2).unwrap();
+        let mut app = app_with_steps(&[step, milan()]);
+        app.handle(&mouse(MouseEventKind::ScrollDown, 70, 30));
+        assert_eq!(app.view(), View::new(step, STEP_ZOOM));
+    }
+
+    #[test]
+    fn drag_from_the_panel_does_not_pan() {
+        let mut app = ready_app();
+        app.set_regions(split_regions(0));
+        app.handle(&mouse(MouseEventKind::Down(MouseButton::Left), 70, 20));
+        app.handle(&mouse(MouseEventKind::Drag(MouseButton::Left), 50, 20));
+        assert_eq!(app.view(), View::new(milan(), 14.0));
+    }
+
+    #[test]
+    fn wheel_scrolls_an_overflowing_help() {
+        let mut app = ready_app();
+        key(&mut app, KeyCode::Char('?'));
+        app.set_help_overflow(3);
+        app.set_regions(Regions {
+            help: Some(Rect::new(20, 5, 40, 20)),
+            ..app.regions.clone()
+        });
+        app.handle(&mouse(MouseEventKind::ScrollDown, 30, 10));
+        assert_eq!(
+            (app.help_scroll(), app.view()),
+            (1, View::new(milan(), 14.0))
+        );
+    }
+
+    #[test]
+    fn wheel_over_a_help_that_fits_zooms_the_map() {
+        let mut app = ready_app();
+        key(&mut app, KeyCode::Char('?'));
+        app.set_regions(Regions {
+            help: Some(Rect::new(20, 5, 40, 20)),
+            ..app.regions.clone()
+        });
+        app.handle(&mouse(MouseEventKind::ScrollUp, 30, 10));
+        assert_eq!(app.view(), View::new(milan(), 15.0));
+    }
+
+    #[test]
+    fn wheel_over_the_status_line_does_not_zoom() {
+        let mut app = ready_app();
+        app.set_regions(Regions {
+            map: Rect::new(0, 0, 100, 39),
+            ..Regions::default()
+        });
+        app.handle(&mouse(MouseEventKind::ScrollUp, 30, 39));
+        assert_eq!(app.view(), View::new(milan(), 14.0));
+    }
+
     #[test]
     fn route_error_shows_before_a_tile_error() {
         let mut app = ready_app();
@@ -858,6 +1022,57 @@ mod tests {
             app.prompt().is_none()
                 && app.view() == View::new(place("", 26.4, -99.0).location, 15.0)
         );
+    }
+
+    /// A search with two results, drawn in rows 3 and 4.
+    fn app_with_results() -> App {
+        let mut app = ready_app();
+        key(&mut app, KeyCode::Char('/'));
+        type_text(&mut app, "Roma");
+        let id = last_search(&mut app);
+        let results = vec![
+            place("Roma, Lazio", 41.9, 12.5),
+            place("Roma, Texas", 26.4, -99.0),
+        ];
+        app.receive(Message::SearchResults(id, Ok(results)), Instant::now());
+        app.set_regions(Regions {
+            prompt_items: Some(ListRegion {
+                area: Rect::new(20, 3, 58, 2),
+                offset: 0,
+                heights: vec![1, 1],
+            }),
+            ..app.regions.clone()
+        });
+        app
+    }
+
+    #[test]
+    fn second_click_on_a_result_goes_there() {
+        let mut app = app_with_results();
+        let click = mouse(MouseEventKind::Down(MouseButton::Left), 30, 4);
+        app.handle(&click);
+        let open_after_one_click = app.prompt().is_some();
+        app.handle(&click);
+        assert_eq!(
+            (open_after_one_click, app.view()),
+            (true, View::new(place("", 26.4, -99.0).location, 15.0))
+        );
+    }
+
+    #[test]
+    fn wheel_moves_the_selected_result() {
+        let mut app = app_with_results();
+        app.handle(&mouse(MouseEventKind::ScrollDown, 50, 30));
+        key(&mut app, KeyCode::Enter);
+        assert_eq!(app.view(), View::new(place("", 26.4, -99.0).location, 15.0));
+    }
+
+    #[test]
+    fn drag_under_a_prompt_does_not_pan() {
+        let mut app = app_with_results();
+        app.handle(&mouse(MouseEventKind::Down(MouseButton::Left), 50, 30));
+        app.handle(&mouse(MouseEventKind::Drag(MouseButton::Left), 40, 30));
+        assert_eq!(app.view(), View::new(milan(), 14.0));
     }
 
     #[test]

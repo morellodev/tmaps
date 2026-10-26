@@ -9,6 +9,17 @@ pub enum Prompt {
     Places { selected: usize },
 }
 
+impl Prompt {
+    /// The selected item of a prompt with a list.
+    pub fn selected_mut(&mut self) -> Option<&mut usize> {
+        match self {
+            Self::Search(search) => Some(&mut search.selected),
+            Self::Places { selected } => Some(selected),
+            Self::SavePlace { .. } => None,
+        }
+    }
+}
+
 #[derive(Debug, Default)]
 pub struct Search {
     pub text: String,
@@ -25,20 +36,32 @@ impl Search {
     }
 }
 
-/// Types a character or removes the last one. Returns `true` when `text` changed.
+/// Types a character or removes text at the end, with the keys of a shell. Returns `true` when
+/// `text` changed.
 pub fn edit(text: &mut String, key: KeyEvent) -> bool {
+    let control = key.modifiers.contains(KeyModifiers::CONTROL);
+    let alt = key.modifiers.contains(KeyModifiers::ALT);
+    let before = text.len();
     match key.code {
-        KeyCode::Char(c)
-            if !key
-                .modifiers
-                .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT) =>
-        {
-            text.push(c);
-            true
+        KeyCode::Char('u') if control => text.clear(),
+        KeyCode::Char('w') if control => remove_word(text),
+        KeyCode::Backspace if alt => remove_word(text),
+        KeyCode::Char(c) if !control && !alt => text.push(c),
+        KeyCode::Backspace => {
+            text.pop();
         }
-        KeyCode::Backspace => text.pop().is_some(),
-        _ => false,
+        _ => return false,
     }
+    text.len() != before
+}
+
+/// Removes the spaces at the end, then the word before them.
+fn remove_word(text: &mut String) {
+    let word_end = text.trim_end().len();
+    let word_start = text[..word_end]
+        .trim_end_matches(|c: char| !c.is_whitespace())
+        .len();
+    text.truncate(word_start);
 }
 
 /// Moves a selection in a list of `len` items with ↑ and ↓. Returns `None` for other keys.
@@ -67,9 +90,38 @@ mod tests {
 
     #[test]
     fn edit_ignores_control_characters() {
-        let mut text = String::new();
+        let mut text = "duomo".to_owned();
         assert!(!edit(
             &mut text,
+            key(KeyCode::Char('a'), KeyModifiers::CONTROL)
+        ));
+    }
+
+    #[test]
+    fn ctrl_u_clears_the_text() {
+        let mut text = "piazza duomo".to_owned();
+        edit(&mut text, key(KeyCode::Char('u'), KeyModifiers::CONTROL));
+        assert_eq!(text, "");
+    }
+
+    #[test]
+    fn ctrl_w_removes_the_last_word_and_its_spaces() {
+        let mut text = "piazza del duomo  ".to_owned();
+        edit(&mut text, key(KeyCode::Char('w'), KeyModifiers::CONTROL));
+        assert_eq!(text, "piazza del ");
+    }
+
+    #[test]
+    fn alt_backspace_removes_the_last_word() {
+        let mut text = "via è".to_owned();
+        edit(&mut text, key(KeyCode::Backspace, KeyModifiers::ALT));
+        assert_eq!(text, "via ");
+    }
+
+    #[test]
+    fn ctrl_w_on_empty_text_changes_nothing() {
+        assert!(!edit(
+            &mut String::new(),
             key(KeyCode::Char('w'), KeyModifiers::CONTROL)
         ));
     }

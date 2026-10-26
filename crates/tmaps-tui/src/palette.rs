@@ -1,5 +1,5 @@
 use std::env;
-use std::ffi::OsStr;
+use std::ffi::OsString;
 
 use ratatui::style::{Color, Modifier, Style};
 use terminal_colorsaurus::{QueryOptions, ThemeMode};
@@ -40,10 +40,7 @@ impl Palette {
     /// its background color. Call it before the event reader starts, because the reader would
     /// take the answer of the terminal.
     pub fn detect(theme: Theme) -> Self {
-        let depth = Depth::from_env(
-            env::var_os("NO_COLOR").as_deref(),
-            env::var_os("COLORTERM").as_deref(),
-        );
+        let depth = Depth::from_env(|name| env::var_os(name));
         let shade = Shade::choose(theme, depth, || {
             match terminal_colorsaurus::theme_mode(QueryOptions::default()) {
                 Ok(ThemeMode::Light) => Shade::Light,
@@ -189,10 +186,13 @@ impl Shade {
 }
 
 impl Depth {
-    fn from_env(no_color: Option<&OsStr>, colorterm: Option<&OsStr>) -> Self {
-        if no_color.is_some_and(|value| !value.is_empty()) {
+    /// `FORCE_COLOR` wins over `NO_COLOR` and `TERM=dumb`, see <https://force-color.org>.
+    fn from_env(var: impl Fn(&str) -> Option<OsString>) -> Self {
+        let set = |name| var(name).is_some_and(|value| !value.is_empty());
+        let dumb = var("TERM").is_some_and(|value| value == "dumb");
+        if !set("FORCE_COLOR") && (set("NO_COLOR") || dumb) {
             Self::Mono
-        } else if colorterm.is_some_and(|value| value == "truecolor" || value == "24bit") {
+        } else if var("COLORTERM").is_some_and(|value| value == "truecolor" || value == "24bit") {
             Self::Rgb
         } else {
             Self::Indexed
@@ -204,21 +204,46 @@ impl Depth {
 mod tests {
     use super::*;
 
+    fn depth(vars: &[(&str, &str)]) -> Depth {
+        Depth::from_env(|name| {
+            vars.iter()
+                .find(|(key, _)| *key == name)
+                .map(|(_, value)| OsString::from(value))
+        })
+    }
+
     #[test]
     fn no_color_wins_over_colorterm() {
-        let depth = Depth::from_env(Some(OsStr::new("1")), Some(OsStr::new("truecolor")));
+        let depth = depth(&[("NO_COLOR", "1"), ("COLORTERM", "truecolor")]);
         assert_eq!(depth, Depth::Mono);
     }
 
     #[test]
     fn empty_no_color_is_ignored() {
-        let depth = Depth::from_env(Some(OsStr::new("")), Some(OsStr::new("24bit")));
+        let depth = depth(&[("NO_COLOR", ""), ("COLORTERM", "24bit")]);
         assert_eq!(depth, Depth::Rgb);
     }
 
     #[test]
     fn terminal_without_truecolor_gets_the_indexed_palette() {
-        assert_eq!(Depth::from_env(None, None), Depth::Indexed);
+        assert_eq!(depth(&[("TERM", "xterm-256color")]), Depth::Indexed);
+    }
+
+    #[test]
+    fn dumb_terminal_gets_no_colors() {
+        assert_eq!(depth(&[("TERM", "dumb")]), Depth::Mono);
+    }
+
+    #[test]
+    fn force_color_wins_over_no_color() {
+        let depth = depth(&[("NO_COLOR", "1"), ("FORCE_COLOR", "1"), ("TERM", "dumb")]);
+        assert_eq!(depth, Depth::Indexed);
+    }
+
+    #[test]
+    fn force_color_zero_also_forces_colors() {
+        let depth = depth(&[("FORCE_COLOR", "0"), ("COLORTERM", "truecolor")]);
+        assert_eq!(depth, Depth::Rgb);
     }
 
     fn no_query() -> Shade {

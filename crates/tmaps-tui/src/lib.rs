@@ -5,6 +5,7 @@ mod loader;
 mod message;
 mod palette;
 mod prompt;
+mod regions;
 mod saved_view;
 mod services;
 mod trip;
@@ -147,7 +148,9 @@ async fn event_loop(
             services.send(request);
         }
         if dirty {
-            terminal.draw(|frame| ui::draw(frame, app, palette, units))?;
+            let mut regions = None;
+            terminal.draw(|frame| regions = Some(ui::draw(frame, app, palette, units)))?;
+            app.set_regions(regions.unwrap_or_default());
         }
         let deadline = app.next_deadline();
         dirty = tokio::select! {

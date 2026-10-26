@@ -172,6 +172,21 @@ impl Trip {
         Some(steps[next].location)
     }
 
+    /// Selects step `index` of the selected route, and returns its location.
+    pub fn select_step(&mut self, index: usize) -> Option<LatLon> {
+        let Routes::Ready {
+            routes,
+            selected,
+            step,
+        } = &mut self.routes
+        else {
+            return None;
+        };
+        let location = routes.get(*selected)?.steps.get(index)?.location;
+        *step = Some(index);
+        Some(location)
+    }
+
     /// Takes the result of a route request. Returns the new routes when they are the answer to
     /// the last route request.
     pub fn receive_routes(
