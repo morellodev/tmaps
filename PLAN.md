@@ -62,9 +62,13 @@ The config file can change each endpoint. Providers are concrete types for now. 
 - The itinerary panel is on the right. Below 100 columns, it becomes a bottom drawer, with the steps next to the summary. It shows when a point is set. It shows the mode, the points, a summary for each alternative, and the steps, with the distance first.
 - `/` opens a search box at the top of the map. After a 300 ms pause in the typing, Photon gets the text with a bias to the map center. `↑`/`↓` select a result, `Enter` centers the map on it, and `Esc` closes the box.
 - `m` asks for a name and saves the point at the crosshair in `[places]` of the config file. `'` lists the saved places, and `Enter` centers the map on one.
-- An open box takes all keys, except `Ctrl-C`.
+- An open box takes all keys, except `Ctrl-C`. It has round corners in the accent color, and the map under it is dimmed.
+- The status line shows the keys for what has the keys now, such as `/ search  s start  e end  ' places  ? keys`. A narrow line drops whole parts, never a part of a word: the position first, then the hints except the last, then the long attribution. The short attribution names only the copyright holders.
+- A braille spinner shows while tiles, a search, or routes load. The screen redraws 10 times per second only while work is pending.
+- Lists mark the selected row with `▶` and reverse video, so the selection shows also without colors.
 - Colors: truecolor with a 256-color fallback. Dark and light themes. `theme = "auto"` (the default) asks the terminal for its background color with `terminal-colorsaurus` before the event reader starts. A terminal that does not answer gets the dark theme after a 1 s timeout. Obey `NO_COLOR`. The route uses a strong accent color. Alternatives are dimmed.
-- When the network fails, show cached tiles and an error in the status line. Route and search errors also go to the status line.
+- When the network fails, show cached tiles and an error in the status line. Errors are short texts that tell what failed and, when possible, what to do. They start with `✗` and use the error color. Route errors also show in the panel, and search errors in the search box. A route or tile error stays until the route or the tiles change. The answer to an action has priority: an error, such as a failed save, stays until the next key, and a confirmation, such as `✓ Saved @work`, closes after 3 s or at the next key.
+- Colors: map lines have at least 3:1 contrast against the background, and muted text at least 4.5:1 against the status line. Tests check both.
 
 ## CLI
 

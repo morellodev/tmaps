@@ -13,7 +13,7 @@ mod ui;
 use std::io;
 use std::path::Path;
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use crossterm::event::{DisableMouseCapture, EnableMouseCapture, EventStream};
 use crossterm::execute;
@@ -25,6 +25,7 @@ use tmaps_core::providers::photon::Photon;
 use tmaps_core::providers::valhalla::Valhalla;
 use tmaps_core::tiles::{DEFAULT_CACHE_BYTES, DiskCache, TileSource};
 use tokio::sync::{Notify, mpsc};
+use tokio::time::MissedTickBehavior;
 
 use crate::app::App;
 use crate::loader::Loader;
@@ -100,6 +101,9 @@ fn install_panic_hook(panicked: Arc<Notify>) {
     }));
 }
 
+/// 10 frames per second: the spinner moves, and an idle app does not draw.
+const SPINNER_FRAME: Duration = Duration::from_millis(100);
+
 /// What the event loop waits on, besides terminal events.
 struct Channels<'a> {
     loader: Loader,
@@ -122,12 +126,15 @@ async fn event_loop(
         panicked,
     } = channels;
     let mut events = EventStream::new();
+    let mut spinner = tokio::time::interval(SPINNER_FRAME);
+    spinner.set_missed_tick_behavior(MissedTickBehavior::Skip);
     let mut dirty = true;
     loop {
         let size = terminal.size()?;
         let (width, height) = ui::map_size(size.width, size.height, app.panel_visible());
         app.set_map_size(width, height);
         let now = Instant::now();
+        dirty |= app.expire(now);
         if app.wants_source(now) {
             loader.load_source();
         }
@@ -141,7 +148,7 @@ async fn event_loop(
         if dirty {
             terminal.draw(|frame| ui::draw(frame, app, palette, units))?;
         }
-        let retry = app.next_retry();
+        let deadline = app.next_deadline();
         dirty = tokio::select! {
             biased;
             () = panicked.notified() => return Err(Error::Panic),
@@ -158,7 +165,11 @@ async fn event_loop(
                 }
                 true
             }
-            () = tokio::time::sleep_until(retry.unwrap_or(now).into()), if retry.is_some() => true,
+            _ = spinner.tick(), if app.busy() => {
+                app.tick();
+                true
+            }
+            () = tokio::time::sleep_until(deadline.unwrap_or(now).into()), if deadline.is_some() => true,
         };
         if app.should_quit() {
             return Ok(());

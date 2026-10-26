@@ -5,15 +5,15 @@ use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
 use lru::LruCache;
-use tmaps_core::LatLon;
 use tmaps_core::geocode::{Place, SearchOptions};
 use tmaps_core::places;
 use tmaps_core::providers::photon::Photon;
 use tmaps_core::providers::valhalla::Valhalla;
 use tmaps_core::routing::{Mode, RouteRequest};
+use tmaps_core::{Error, LatLon};
 use tokio::sync::mpsc;
 
-use crate::message::Message;
+use crate::message::{Message, Server, describe, no_route};
 
 const ALTERNATIVES: u8 = 2;
 /// A held key (`x`, `1`) asks for many routes. The router serves one request each second, so
@@ -109,7 +109,7 @@ impl Services {
                     let routes = valhalla
                         .route(&request)
                         .await
-                        .map_err(|error| error.to_string());
+                        .map_err(|error| route_error(&error, mode));
                     let _ = sender.send(Message::Routes(id, routes));
                 });
             }
@@ -134,7 +134,7 @@ impl Services {
                     let _guard = config_lock.lock().unwrap_or_else(PoisonError::into_inner);
                     let message = match places::add(&config_file, &name, location) {
                         Ok(()) => Message::PlaceSaved(name, location),
-                        Err(error) => Message::SaveFailed(format!("cannot save @{name}: {error}")),
+                        Err(error) => Message::SaveFailed(format!("Cannot save @{name}: {error}")),
                     };
                     let _ = sender.send(message);
                 });
@@ -179,9 +179,16 @@ impl Services {
                     .unwrap_or_else(PoisonError::into_inner)
                     .put(key, places.clone());
             }
-            let result = result.map_err(|error| error.to_string());
+            let result = result.map_err(|error| describe(&error, Server::Search));
             let _ = sender.send(Message::SearchResults(id, result));
         });
+    }
+}
+
+fn route_error(error: &Error, mode: Mode) -> String {
+    match error {
+        Error::NoRoute(_) => no_route(mode),
+        _ => describe(error, Server::Routing),
     }
 }
 
@@ -198,6 +205,15 @@ fn search_key(text: &str, near: LatLon) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn no_route_error_tells_the_other_modes() {
+        let error = Error::NoRoute("too far".to_owned());
+        assert_eq!(
+            route_error(&error, Mode::Bike),
+            "No route by bike. Press 1 or 3 for another mode, or move a point."
+        );
+    }
 
     #[test]
     fn search_key_ignores_case_spaces_and_a_small_pan() {

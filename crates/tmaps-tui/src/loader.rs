@@ -6,7 +6,7 @@ use tmaps_core::render::PreparedTile;
 use tmaps_core::tiles::{TileId, TileSource};
 use tokio::sync::{Semaphore, mpsc};
 
-use crate::message::{Message, SourceInfo};
+use crate::message::{Message, Server, SourceInfo, describe};
 
 /// More parallel requests than a browser makes to one host would be unfair to a free server.
 const MAX_REQUESTS: usize = 6;
@@ -42,7 +42,7 @@ impl Loader {
                     max_zoom: tile_set.max_zoom,
                     attribution: tile_set.attribution.clone(),
                 })
-                .map_err(|error| error.to_string());
+                .map_err(|error| describe(&error, Server::Map));
             let _ = sender.send(Message::Source(info));
         });
     }
@@ -83,11 +83,14 @@ async fn prepare(
     id: TileId,
     lang: Arc<str>,
 ) -> Result<Box<PreparedTile>, String> {
-    let body = source.tile(id).await.map_err(|error| error.to_string())?;
+    let body = source
+        .tile(id)
+        .await
+        .map_err(|error| describe(&error, Server::Map))?;
     tokio::task::spawn_blocking(move || {
         Tile::decode(&body).map(|tile| Box::new(PreparedTile::new(&tile, &lang)))
     })
     .await
     .map_err(|error| error.to_string())?
-    .map_err(|error| format!("tile {id}: {error}"))
+    .map_err(|_| format!("The map server sent tile {id}, but tmaps cannot read it."))
 }

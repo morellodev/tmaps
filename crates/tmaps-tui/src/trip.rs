@@ -3,6 +3,7 @@ use std::mem;
 use tmaps_core::LatLon;
 use tmaps_core::routing::{Mode, Route};
 
+use crate::message::no_route;
 use crate::services::Request;
 
 /// The start and end points, the travel mode, and the routes between the points.
@@ -183,7 +184,7 @@ impl Trip {
         }
         self.route_request = None;
         self.routes = match result {
-            Ok(routes) if routes.is_empty() => Routes::Failed("no route found".to_owned()),
+            Ok(routes) if routes.is_empty() => Routes::Failed(no_route(self.mode)),
             Ok(routes) => Routes::Ready {
                 routes,
                 selected: 0,

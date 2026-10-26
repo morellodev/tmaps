@@ -28,6 +28,7 @@ const FAST_PAN_STEP: f64 = 0.5;
 const STEP_ZOOM: f64 = 16.0;
 /// A search result or a saved place has no extent, so the map shows its neighborhood.
 const PLACE_ZOOM: f64 = 15.0;
+const INFO_TIME: Duration = Duration::from_secs(3);
 
 pub struct App {
     view: View,
@@ -45,9 +46,24 @@ pub struct App {
     prompt: Option<Prompt>,
     places: BTreeMap<String, LatLon>,
     last_search: u64,
-    /// An error of a search or of a saved place.
-    action_error: Option<String>,
+    /// The answer to the last action of the user, until the next key.
+    notice: Option<Notice>,
+    /// Frames of the spinner since the start.
+    ticks: usize,
     requests: Vec<Request>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Level {
+    Info,
+    Error,
+}
+
+struct Notice {
+    level: Level,
+    text: String,
+    /// An info closes also after a time. An error stays until the next key.
+    until: Option<Instant>,
 }
 
 enum SourceState {
@@ -75,7 +91,8 @@ impl App {
             prompt: None,
             places: BTreeMap::new(),
             last_search: 0,
-            action_error: None,
+            notice: None,
+            ticks: 0,
             requests: Vec::new(),
         }
     }
@@ -103,12 +120,42 @@ impl App {
         self.quit
     }
 
-    /// A route, search, or save error first: it is the answer to an action of the user.
-    pub fn error(&self) -> Option<&str> {
-        self.trip
-            .error()
-            .or(self.action_error.as_deref())
-            .or(self.error.as_deref())
+    /// The text for the status line. A notice first: it is the answer to the last action. A
+    /// route error stays until the route changes, and the panel also shows it.
+    pub fn status(&self) -> Option<(Level, &str)> {
+        self.notice
+            .as_ref()
+            .map(|notice| (notice.level, notice.text.as_str()))
+            .or(self.trip.error().map(|error| (Level::Error, error)))
+            .or(self.error.as_deref().map(|error| (Level::Error, error)))
+    }
+
+    /// Tiles, a search, or a route are on the way.
+    pub fn busy(&self) -> bool {
+        self.loading()
+            || matches!(&self.prompt, Some(Prompt::Search(search)) if search.pending.is_some())
+            || matches!(self.trip.routes(), Routes::Loading)
+    }
+
+    pub fn tick(&mut self) {
+        self.ticks = self.ticks.wrapping_add(1);
+    }
+
+    pub fn ticks(&self) -> usize {
+        self.ticks
+    }
+
+    /// Closes an info notice after its time. Returns `true` when the screen must be drawn again.
+    pub fn expire(&mut self, now: Instant) -> bool {
+        let expired = self
+            .notice
+            .as_ref()
+            .and_then(|notice| notice.until)
+            .is_some_and(|until| now >= until);
+        if expired {
+            self.notice = None;
+        }
+        expired
     }
 
     pub fn prompt(&self) -> Option<&Prompt> {
@@ -142,17 +189,16 @@ impl App {
         }
     }
 
-    pub fn loading(&self) -> usize {
-        self.pending.len() + usize::from(matches!(self.source, SourceState::Loading))
+    pub fn loading(&self) -> bool {
+        !self.pending.is_empty() || matches!(self.source, SourceState::Loading)
     }
 
     /// Returns `true` when the screen must be drawn again.
     pub fn handle(&mut self, event: &Event) -> bool {
         match event {
             Event::Key(key) if key.kind == KeyEventKind::Press => {
-                // A search or save error is the answer to the last action, until the next one.
-                let had_error = self.action_error.take().is_some();
-                self.on_key(*key) || had_error
+                let had_notice = self.notice.take().is_some();
+                self.on_key(*key) || had_notice
             }
             Event::Mouse(mouse) => self.on_mouse(*mouse),
             Event::Resize(..) => true,
@@ -206,15 +252,26 @@ impl App {
                         Ok(places) => search.results = places,
                         Err(error) => {
                             search.results.clear();
-                            self.action_error = Some(error);
+                            search.error = Some(error);
                         }
                     }
                 }
             }
             Message::PlaceSaved(name, location) => {
+                self.notice = Some(Notice {
+                    level: Level::Info,
+                    text: format!("Saved @{name}"),
+                    until: Some(now + INFO_TIME),
+                });
                 self.places.insert(name, location);
             }
-            Message::SaveFailed(error) => self.action_error = Some(error),
+            Message::SaveFailed(error) => {
+                self.notice = Some(Notice {
+                    level: Level::Error,
+                    text: error,
+                    until: None,
+                });
+            }
         }
     }
 
@@ -264,8 +321,8 @@ impl App {
         load
     }
 
-    /// When the next failed request can be tried again.
-    pub fn next_retry(&self) -> Option<Instant> {
+    /// When the next failed request can be tried again, or an info notice closes.
+    pub fn next_deadline(&self) -> Option<Instant> {
         let source_retry = match self.source {
             SourceState::Failed(at) => Some(at + RETRY_AFTER),
             _ => None,
@@ -274,6 +331,7 @@ impl App {
             .values()
             .map(|at| *at + RETRY_AFTER)
             .chain(source_retry)
+            .chain(self.notice.as_ref().and_then(|notice| notice.until))
             .min()
     }
 
@@ -668,8 +726,8 @@ mod tests {
             Message::Tile(TileId { z: 14, x: 0, y: 0 }, Err("timeout".to_owned())),
             now,
         );
-        app.receive(Message::Routes(id, Err("no route found".to_owned())), now);
-        assert_eq!(app.error(), Some("no route found"));
+        app.receive(Message::Routes(id, Err("No route found.".to_owned())), now);
+        assert_eq!(app.status(), Some((Level::Error, "No route found.")));
     }
 
     #[test]
@@ -789,7 +847,7 @@ mod tests {
     }
 
     #[test]
-    fn search_error_goes_to_the_status_line() {
+    fn search_error_stays_in_the_search_box() {
         let mut app = ready_app();
         key(&mut app, KeyCode::Char('/'));
         type_text(&mut app, "Roma");
@@ -798,7 +856,10 @@ mod tests {
             Message::SearchResults(id, Err("timeout".to_owned())),
             Instant::now(),
         );
-        assert_eq!(app.error(), Some("timeout"));
+        assert_matches!(
+            app.prompt(),
+            Some(Prompt::Search(search)) if search.error.as_deref() == Some("timeout")
+        );
     }
 
     #[test]
@@ -868,7 +929,7 @@ mod tests {
             Instant::now(),
         );
         key(&mut app, KeyCode::Right);
-        assert_eq!(app.error(), None);
+        assert_eq!(app.status(), None);
     }
 
     #[test]
@@ -895,7 +956,36 @@ mod tests {
             Message::SaveFailed("cannot save @work".to_owned()),
             Instant::now(),
         );
-        assert_eq!(app.error(), Some("cannot save @work"));
+        assert_eq!(app.status(), Some((Level::Error, "cannot save @work")));
+    }
+
+    #[test]
+    fn save_error_shows_before_a_route_error() {
+        let mut app = ready_app();
+        let id = route_id(&plan_route(&mut app));
+        let now = Instant::now();
+        app.receive(Message::Routes(id, Err("No route found.".to_owned())), now);
+        app.receive(Message::SaveFailed("Cannot save @work".to_owned()), now);
+        assert_eq!(app.status(), Some((Level::Error, "Cannot save @work")));
+    }
+
+    #[test]
+    fn saved_place_notice_closes_after_its_time() {
+        let mut app = ready_app();
+        let now = Instant::now();
+        app.receive(Message::PlaceSaved("work".to_owned(), milan()), now);
+        let shown = app.status() == Some((Level::Info, "Saved @work"));
+        app.expire(now + INFO_TIME);
+        assert!(shown && app.status().is_none());
+    }
+
+    #[test]
+    fn pending_search_makes_the_app_busy() {
+        let mut app = ready_app();
+        let idle = !app.busy();
+        key(&mut app, KeyCode::Char('/'));
+        type_text(&mut app, "Roma");
+        assert!(idle && app.busy());
     }
 
     #[test]

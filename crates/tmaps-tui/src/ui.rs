@@ -4,15 +4,18 @@ use ratatui::Frame;
 use ratatui::buffer::Buffer;
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Modifier, Style};
-use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Clear, List, ListItem, ListState, Padding, Paragraph, Widget};
+use ratatui::text::{Line, Span, Text};
+use ratatui::widgets::{
+    Block, BorderType, Clear, HighlightSpacing, List, ListItem, ListState, Padding, Paragraph,
+    Widget,
+};
 use tmaps_core::LatLon;
 use tmaps_core::config::Units;
 use tmaps_core::format::{distance, duration};
 use tmaps_core::render::{Canvas, Class, DOTS_PER_CELL_X, DOTS_PER_CELL_Y, View, cursor_cell};
 use tmaps_core::routing::{Mode, Route, Step};
 
-use crate::app::App;
+use crate::app::{App, Level};
 use crate::palette::Palette;
 use crate::prompt::Prompt;
 use crate::trip::{Routes, Trip, Waypoint};
@@ -27,6 +30,11 @@ const SIDE_PANEL_MIN_WIDTH: u16 = 100;
 const PROMPT_WIDTH: u16 = 60;
 /// Shows water without colors, where it would otherwise look like land.
 const MONO_WATER: char = '⠄';
+/// Braille, as the map.
+const SPINNER: [char; 10] = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+const SELECTED: &str = "▶ ";
+/// A key and what it does, for the status line.
+type Hint = (&'static str, &'static str);
 const HELP: [(&str, &str); 15] = [
     ("←↓↑→  hjkl", "pan"),
     ("Shift + pan", "pan faster"),
@@ -106,18 +114,25 @@ pub fn draw(frame: &mut Frame, app: &App, palette: Palette, units: Units) {
             canvas: &app.canvas(),
             palette,
             markers,
+            dim: app.prompt().is_some() || app.help(),
         },
         areas.map,
     );
+    let spinner = spinner(app);
     if let Some(panel) = areas.panel {
-        draw_panel(frame, trip, palette, units, panel);
+        draw_panel(frame, trip, palette, units, spinner, panel);
     }
     draw_status(frame, app, palette, areas.status);
     if let Some(prompt) = app.prompt() {
-        draw_prompt(frame, &prompt_view(prompt, app), palette, areas.map);
+        draw_prompt(
+            frame,
+            &prompt_view(prompt, app, palette, spinner),
+            palette,
+            areas.map,
+        );
     }
     if app.help() {
-        draw_help(frame, frame.area());
+        draw_help(frame, palette, frame.area());
     }
 }
 
@@ -155,6 +170,8 @@ struct MapWidget<'a> {
     canvas: &'a Canvas,
     palette: Palette,
     markers: Vec<Marker>,
+    /// An open box takes the keys, so the map steps back.
+    dim: bool,
 }
 
 impl Widget for MapWidget<'_> {
@@ -195,12 +212,16 @@ impl Widget for MapWidget<'_> {
                 );
             }
         }
+        if self.dim {
+            buf.set_style(area, Style::new().add_modifier(Modifier::DIM));
+        }
         let (column, row) = cursor_cell(area.width, area.height);
         if let Some(target) = buf.cell_mut((area.x + column, area.y + row)) {
             target.set_char('+').set_style(
                 Style::new()
                     .fg(self.palette.crosshair())
-                    .add_modifier(Modifier::BOLD),
+                    .add_modifier(Modifier::BOLD)
+                    .remove_modifier(Modifier::DIM),
             );
         }
         // After the crosshair: a point set at the crosshair must show at once.
@@ -208,15 +229,24 @@ impl Widget for MapWidget<'_> {
             if let Some(target) = buf.cell_mut((area.x + marker.column, area.y + marker.row)) {
                 target
                     .set_char(marker.symbol)
-                    .set_style(self.palette.marker());
+                    .set_style(self.palette.marker().remove_modifier(Modifier::DIM));
             }
         }
     }
 }
 
-fn draw_panel(frame: &mut Frame, trip: &Trip, palette: Palette, units: Units, area: Rect) {
+fn draw_panel(
+    frame: &mut Frame,
+    trip: &Trip,
+    palette: Palette,
+    units: Units,
+    spinner: char,
+    area: Rect,
+) {
     let block = Block::bordered()
         .title(" Route ")
+        .title_style(Style::new().add_modifier(Modifier::BOLD))
+        .border_style(Style::new().fg(palette.muted()))
         .padding(Padding::horizontal(1))
         .style(Style::new().fg(palette.text()).bg(palette.background()));
     let inner = block.inner(area);
@@ -230,7 +260,7 @@ fn draw_panel(frame: &mut Frame, trip: &Trip, palette: Palette, units: Units, ar
     } else {
         inner.width
     };
-    let mut summary = vec![mode_line(trip.mode()), Line::default()];
+    let mut summary = vec![mode_line(trip.mode(), palette), Line::default()];
     summary.extend(waypoint_lines(
         'A',
         trip.start(),
@@ -248,14 +278,25 @@ fn draw_panel(frame: &mut Frame, trip: &Trip, palette: Palette, units: Units, ar
     summary.push(Line::default());
     match trip.routes() {
         Routes::None => {}
-        Routes::Loading => summary.push(Line::from("Searching for routes…")),
-        Routes::Failed(error) => {
-            summary.extend(hanging("", error, width).into_iter().map(Line::from));
-        }
+        Routes::Loading => summary.push(Line::from(format!("{spinner} Searching for routes…"))),
+        Routes::Failed(error) => summary.extend(
+            hanging("✗ ", error, width)
+                .into_iter()
+                .map(|line| Line::styled(line, palette.error())),
+        ),
         Routes::Ready {
             routes, selected, ..
         } => summary.extend(routes.iter().enumerate().flat_map(|(index, route)| {
+            let style = if index == *selected {
+                Style::new()
+                    .fg(palette.route())
+                    .add_modifier(Modifier::BOLD)
+            } else {
+                Style::new()
+            };
             summary_lines(index, route, index == *selected, units, width)
+                .into_iter()
+                .map(move |line| Line::styled(line, style))
         })),
     }
     let [summary_area, steps_area] = if side_by_side {
@@ -272,21 +313,38 @@ fn draw_panel(frame: &mut Frame, trip: &Trip, palette: Palette, units: Units, ar
     };
     frame.render_widget(Paragraph::new(summary), summary_area);
     if let Some((route, step)) = trip.selected() {
+        let width = steps_area.width.saturating_sub(selected_width());
         let steps: Vec<ListItem> = route
             .steps
             .iter()
-            .map(|step| ListItem::new(step_lines(step, units, steps_area.width).join("\n")))
+            .map(|step| step_item(step, units, width, palette))
             .collect();
         let mut state = ListState::default().with_selected(step);
         frame.render_stateful_widget(
-            List::new(steps).highlight_style(Style::new().add_modifier(Modifier::REVERSED)),
+            selectable(steps, palette).scroll_padding(1),
             steps_area,
             &mut state,
         );
     }
 }
 
-fn mode_line(mode: Mode) -> Line<'static> {
+/// A list with the selected row marked by [`SELECTED`]. The mark has its column also when no
+/// row is selected, so the rows do not move when a selection starts.
+fn selectable<'a>(
+    items: impl IntoIterator<Item = impl Into<ListItem<'a>>>,
+    palette: Palette,
+) -> List<'a> {
+    List::new(items)
+        .highlight_symbol(SELECTED)
+        .highlight_spacing(HighlightSpacing::Always)
+        .highlight_style(palette.selection())
+}
+
+fn selected_width() -> u16 {
+    u16::try_from(Line::from(SELECTED).width()).unwrap_or(u16::MAX)
+}
+
+fn mode_line(mode: Mode, palette: Palette) -> Line<'static> {
     let spans = [
         (Mode::Car, "1 car"),
         (Mode::Bike, "2 bike"),
@@ -295,7 +353,7 @@ fn mode_line(mode: Mode) -> Line<'static> {
     .into_iter()
     .flat_map(|(option, text)| {
         let style = if option == mode {
-            Style::new().add_modifier(Modifier::REVERSED | Modifier::BOLD)
+            palette.selection().add_modifier(Modifier::BOLD)
         } else {
             Style::new()
         };
@@ -343,7 +401,7 @@ fn summary_lines(
     selected: bool,
     units: Units,
     width: u16,
-) -> Vec<Line<'static>> {
+) -> Vec<String> {
     let prefix = format!("{} {}. ", if selected { '▶' } else { ' ' }, index + 1);
     let mut text = format!(
         "{} · {}",
@@ -359,25 +417,31 @@ fn summary_lines(
             let _ = write!(text, " · {flag}");
         }
     }
-    let style = if selected {
-        Style::new().add_modifier(Modifier::BOLD)
-    } else {
-        Style::new()
-    };
     hanging(&prefix, &text, width)
-        .into_iter()
-        .map(|line| Line::styled(line, style))
-        .collect()
 }
 
-/// The distance first, in a column, and the instruction to its right.
-fn step_lines(step: &Step, units: Units, width: u16) -> Vec<String> {
+/// The distance first, in a muted column, and the instruction to its right.
+fn step_item(step: &Step, units: Units, width: u16, palette: Palette) -> ListItem<'static> {
     let distance = if step.distance_m > 0.0 {
         distance(step.distance_m, units)
     } else {
         String::new()
     };
-    hanging(&format!("{distance:>7}  "), &step.instruction, width)
+    let prefix = format!("{distance:>7}  ");
+    let lines = hanging(&prefix, &step.instruction, width)
+        .into_iter()
+        .enumerate()
+        .map(|(index, mut line)| {
+            if index > 0 {
+                return Line::from(line);
+            }
+            let instruction = line.split_off(prefix.len());
+            Line::from_iter([
+                Span::styled(line, Style::new().fg(palette.muted())),
+                Span::raw(instruction),
+            ])
+        });
+    ListItem::new(Text::from_iter(lines))
 }
 
 /// Wraps `text` after `prefix` to `width` columns. The next lines start under the text, so the
@@ -402,30 +466,154 @@ fn draw_status(frame: &mut Frame, app: &App, palette: Palette, area: Rect) {
     let style = Style::new()
         .fg(palette.text())
         .bg(palette.status_background());
-    let view = app.view();
-    let center = view.center();
-    let mut left = format!(
-        " {:.5}, {:.5}  z{:.1}",
-        center.lat(),
-        center.lon(),
-        view.zoom()
-    );
-    if app.loading() > 0 {
-        let _ = write!(left, "  loading {}", app.loading());
-    }
-    if let Some(error) = app.error() {
-        let _ = write!(left, "  error: {error}");
-    }
-    let left = Line::from(left);
-    let attribution = Line::from(format!("{} ", app.attribution().unwrap_or_default()));
-    // The attribution gets the space that the position and the error leave. A right-aligned line
-    // that is too wide loses its start.
-    let [left_area, attribution_area] = area.layout(&Layout::horizontal([
-        Constraint::Length(u16::try_from(left.width() + 2).unwrap_or(u16::MAX)),
+    let (left, right) = status_lines(app, palette, area.width);
+    let [left_area, right_area] = area.layout(&Layout::horizontal([
         Constraint::Fill(1),
+        Constraint::Length(u16::try_from(right.width()).unwrap_or(u16::MAX)),
     ]));
     frame.render_widget(Paragraph::new(left).style(style), left_area);
-    frame.render_widget(attribution.right_aligned().style(style), attribution_area);
+    frame.render_widget(Paragraph::new(right).style(style), right_area);
+}
+
+/// The left part has the notice, the work on the way, and the key hints. The right part has the
+/// position and the attribution. A narrow line drops whole parts, never a part of a word, in
+/// this order: the position, the work and the hints except the last, the long attribution, the
+/// last hint, the attribution.
+fn status_lines(app: &App, palette: Palette, width: u16) -> (Line<'static>, Line<'static>) {
+    let notice = notice_spans(app, palette);
+    let work = work_spans(app, palette);
+    let hints = hints(app);
+    let last_hint = &hints[hints.len().saturating_sub(1)..];
+    let view = app.view();
+    let position = format!("{}  z{:.1}", coordinates(view.center()), view.zoom());
+    let attribution = app.attribution().unwrap_or_default();
+    let short = short_attribution(attribution);
+    let candidates: [(bool, &[Hint], &str, &str); 6] = [
+        (true, hints, &position, attribution),
+        (true, hints, "", attribution),
+        (false, last_hint, "", attribution),
+        (false, last_hint, "", &short),
+        (false, &[], "", &short),
+        (false, &[], "", ""),
+    ];
+    let mut fallback = (Line::default(), Line::default());
+    for (with_work, hints, position, attribution) in candidates {
+        let segments = notice
+            .iter()
+            .chain(work.iter().filter(|_| with_work))
+            .cloned()
+            .chain(hints.iter().map(|hint| hint_spans(*hint, palette)));
+        let mut left = vec![Span::raw(" ")];
+        for (index, segment) in segments.enumerate() {
+            if index > 0 {
+                left.push(Span::raw("  "));
+            }
+            left.extend(segment);
+        }
+        let right: Vec<&str> = [position, attribution]
+            .into_iter()
+            .filter(|part| !part.is_empty())
+            .collect();
+        let right = if right.is_empty() {
+            Line::default()
+        } else {
+            Line::from(format!("{} ", right.join("  ")))
+        };
+        let left = Line::from(left);
+        if left.width() + 2 + right.width() <= usize::from(width) {
+            return (left, right);
+        }
+        fallback = (left, right);
+    }
+    fallback
+}
+
+fn notice_spans(app: &App, palette: Palette) -> Option<Vec<Span<'static>>> {
+    let span = match app.status()? {
+        (Level::Error, text) => Span::styled(format!("✗ {text}"), palette.error()),
+        (Level::Info, text) => Span::styled(format!("✓ {text}"), Style::new().fg(palette.route())),
+    };
+    Some(vec![span])
+}
+
+/// The spinner for work that nothing else on the screen shows.
+fn work_spans(app: &App, palette: Palette) -> Option<Vec<Span<'static>>> {
+    let work = if app.loading() {
+        "loading the map"
+    } else if !app.panel_visible() && matches!(app.trip().routes(), Routes::Loading) {
+        "searching for routes"
+    } else {
+        return None;
+    };
+    Some(vec![Span::styled(
+        format!("{} {work}", spinner(app)),
+        Style::new().fg(palette.muted()),
+    )])
+}
+
+fn spinner(app: &App) -> char {
+    SPINNER[app.ticks() % SPINNER.len()]
+}
+
+/// The keys for what has the keys now. The last hint opens or closes the help, or closes the
+/// box, so the status line keeps it longest.
+fn hints(app: &App) -> &'static [Hint] {
+    if app.help() {
+        return &[("Esc", "close")];
+    }
+    match app.prompt() {
+        Some(Prompt::Search(_) | Prompt::Places { .. }) => {
+            &[("↑↓", "select"), ("Enter", "go"), ("Esc", "close")]
+        }
+        Some(Prompt::SavePlace { .. }) => &[("Enter", "save"), ("Esc", "cancel")],
+        None if app.trip().is_empty() => &[
+            ("/", "search"),
+            ("s", "start"),
+            ("e", "end"),
+            ("'", "places"),
+            ("?", "keys"),
+        ],
+        None => &[
+            ("Tab", "route"),
+            ("] [", "step"),
+            ("p", "panel"),
+            ("c", "clear"),
+            ("?", "keys"),
+        ],
+    }
+}
+
+fn hint_spans((key, action): Hint, palette: Palette) -> Vec<Span<'static>> {
+    vec![
+        Span::styled(
+            key,
+            Style::new()
+                .fg(palette.route())
+                .add_modifier(Modifier::BOLD),
+        ),
+        Span::styled(format!(" {action}"), Style::new().fg(palette.muted())),
+    ]
+}
+
+/// Only the copyright holders of the default source, without the other words. An attribution
+/// that names another holder after a `©` stays complete.
+fn short_attribution(attribution: &str) -> String {
+    const HOLDERS: [&str; 2] = ["OpenMapTiles", "OpenStreetMap"];
+    let only_known = attribution.split('©').skip(1).all(|after| {
+        HOLDERS
+            .iter()
+            .any(|holder| after.trim_start().starts_with(holder))
+    });
+    let holders: Vec<String> = HOLDERS
+        .iter()
+        .filter(|holder| attribution.contains(*holder))
+        .map(|holder| format!("© {holder}"))
+        .collect();
+    if only_known && !holders.is_empty() {
+        holders.join(" ")
+    } else {
+        attribution.to_owned()
+    }
 }
 
 /// What a prompt shows: an optional text input, then a list or a note.
@@ -434,20 +622,25 @@ struct PromptView {
     input: Option<String>,
     items: Vec<String>,
     selected: Option<usize>,
-    note: Option<String>,
+    note: Option<(String, Style)>,
 }
 
-fn prompt_view(prompt: &Prompt, app: &App) -> PromptView {
+fn prompt_view(prompt: &Prompt, app: &App, palette: Palette, spinner: char) -> PromptView {
     match prompt {
         Prompt::Search(search) => {
             let note = if !search.results.is_empty() {
                 None
+            } else if let Some(error) = &search.error {
+                Some((format!("✗ {error} Type to try again."), palette.error()))
             } else if search.pending.is_some() {
-                Some("Searching…")
+                Some((format!("{spinner} Searching…"), Style::new()))
             } else if search.text.trim().is_empty() {
-                Some("Type a place or an address. Enter: go there.")
+                Some((
+                    "Type a place or an address. Enter: go there.".to_owned(),
+                    Style::new(),
+                ))
             } else {
-                Some("No places found.")
+                Some(("No places found.".to_owned(), Style::new()))
             };
             PromptView {
                 title: " Search ",
@@ -458,7 +651,7 @@ fn prompt_view(prompt: &Prompt, app: &App) -> PromptView {
                     .map(|place| place.label.clone())
                     .collect(),
                 selected: Some(search.selected),
-                note: note.map(str::to_owned),
+                note,
             }
         }
         Prompt::SavePlace { name, invalid } => PromptView {
@@ -466,14 +659,17 @@ fn prompt_view(prompt: &Prompt, app: &App) -> PromptView {
             input: Some(format!("@{name}")),
             items: Vec::new(),
             selected: None,
-            note: Some(
-                if *invalid {
-                    "Not a valid name. Use letters, digits, '-', and '_'."
-                } else {
-                    "Letters, digits, '-', and '_'. Enter: save."
-                }
-                .to_owned(),
-            ),
+            note: Some(if *invalid {
+                (
+                    "✗ Not a valid name. Use letters, digits, '-', and '_'.".to_owned(),
+                    palette.error(),
+                )
+            } else {
+                (
+                    "Letters, digits, '-', and '_'. Enter: save.".to_owned(),
+                    Style::new(),
+                )
+            }),
         },
         Prompt::Places { selected } => PromptView {
             title: " Saved places ",
@@ -484,22 +680,46 @@ fn prompt_view(prompt: &Prompt, app: &App) -> PromptView {
                 .map(|(name, location)| format!("@{name}  {}", coordinates(*location)))
                 .collect(),
             selected: Some(*selected),
-            note: app
-                .places()
-                .is_empty()
-                .then(|| "No saved places. m: save the place at +".to_owned()),
+            note: app.places().is_empty().then(|| {
+                (
+                    "No saved places. m: save the place at +".to_owned(),
+                    Style::new(),
+                )
+            }),
         },
     }
 }
 
+/// An open box takes the keys. Its round corners show that also without colors.
+fn box_block(title: &'static str, palette: Palette) -> Block<'static> {
+    Block::bordered()
+        .border_type(BorderType::Rounded)
+        .border_style(Style::new().fg(palette.route()))
+        .title(title)
+        .title_style(
+            Style::new()
+                .fg(palette.route())
+                .add_modifier(Modifier::BOLD),
+        )
+        .style(Style::new().fg(palette.text()).bg(palette.background()))
+}
+
 /// Draws the prompt at the top of the map, so the place at the crosshair stays visible.
 fn draw_prompt(frame: &mut Frame, view: &PromptView, palette: Palette, area: Rect) {
+    let width = PROMPT_WIDTH.min(area.width);
+    let block = box_block(view.title, palette).padding(Padding::horizontal(1));
+    let text_width = block.inner(Rect::new(0, 0, width, 3)).width;
+    let note: Vec<Line> = view.note.as_ref().map_or_else(Vec::new, |(text, style)| {
+        hanging("", text, text_width)
+            .into_iter()
+            .map(|line| Line::styled(line, *style))
+            .collect()
+    });
     let input_height = u16::from(view.input.is_some());
-    let list_height = view.items.len() + usize::from(view.note.is_some());
+    let list_height = view.items.len() + note.len();
     let height = u16::try_from(list_height)
         .unwrap_or(u16::MAX)
         .saturating_add(input_height + 2);
-    let width = PROMPT_WIDTH.min(area.width);
     let popup = Rect {
         x: area.x + (area.width - width) / 2,
         y: area.y + u16::from(area.height > height),
@@ -507,10 +727,6 @@ fn draw_prompt(frame: &mut Frame, view: &PromptView, palette: Palette, area: Rec
         height,
     }
     .intersection(area);
-    let block = Block::bordered()
-        .title(view.title)
-        .padding(Padding::horizontal(1))
-        .style(Style::new().fg(palette.text()).bg(palette.background()));
     let inner = block.inner(popup);
     frame.render_widget(Clear, popup);
     frame.render_widget(block, popup);
@@ -536,25 +752,30 @@ fn draw_prompt(frame: &mut Frame, view: &PromptView, palette: Palette, area: Rec
     ]));
     let mut state = ListState::default().with_selected(view.selected);
     frame.render_stateful_widget(
-        List::new(view.items.iter().map(String::as_str))
-            .highlight_style(Style::new().add_modifier(Modifier::REVERSED)),
+        selectable(view.items.iter().map(String::as_str), palette),
         items_area,
         &mut state,
     );
-    if let Some(note) = &view.note {
-        frame.render_widget(Line::from(note.as_str()), note_area);
-    }
+    frame.render_widget(Paragraph::new(note), note_area);
 }
 
-fn draw_help(frame: &mut Frame, area: Rect) {
+fn draw_help(frame: &mut Frame, palette: Palette, area: Rect) {
     let key_width = HELP
         .iter()
         .map(|(keys, _)| keys.chars().count())
         .max()
         .unwrap_or(0);
+    let key_style = Style::new()
+        .fg(palette.route())
+        .add_modifier(Modifier::BOLD);
     let lines: Vec<Line> = HELP
         .iter()
-        .map(|(keys, action)| Line::from(format!(" {keys:key_width$}  {action} ")))
+        .map(|(keys, action)| {
+            Line::from_iter([
+                Span::styled(format!(" {keys:key_width$}"), key_style),
+                Span::raw(format!("  {action} ")),
+            ])
+        })
         .collect();
     let width = lines.iter().map(Line::width).max().unwrap_or(0) + 2;
     let popup = area.centered(
@@ -563,7 +784,7 @@ fn draw_help(frame: &mut Frame, area: Rect) {
     );
     frame.render_widget(Clear, popup);
     frame.render_widget(
-        Paragraph::new(lines).block(Block::bordered().title(" Keys ")),
+        Paragraph::new(lines).block(box_block(" Keys ", palette)),
         popup,
     );
 }
@@ -612,6 +833,7 @@ mod tests {
             canvas: &canvas,
             palette,
             markers: Vec::new(),
+            dim: false,
         }
         .render(area, &mut buffer);
         assert_eq!(buffer[cursor_cell(8, 6)].symbol(), "+");
@@ -759,7 +981,7 @@ mod tests {
         app.receive(Message::SearchResults(id, Ok(vec![place])), Instant::now());
         let text = screen(80, 24, &app);
         let lines: Vec<&str> = text.lines().collect();
-        assert!(lines[2].contains("› Duomo") && lines[3].contains("Piazza del Duomo, Milano"));
+        assert!(lines[2].contains("› Duomo") && lines[3].contains("▶ Piazza del Duomo, Milano"));
     }
 
     #[test]
@@ -785,6 +1007,54 @@ mod tests {
             now,
         );
 
-        assert!(status_line(80, &app).contains("error: timeout"));
+        assert!(status_line(80, &app).contains("✗ timeout"));
+    }
+
+    fn app_with_source() -> App {
+        let mut app = App::new(View::new(LatLon::new(45.4642, 9.19).unwrap(), 14.0));
+        app.receive(
+            Message::Source(Ok(SourceInfo {
+                max_zoom: 14,
+                attribution: "OpenFreeMap © OpenMapTiles Data from OpenStreetMap".to_owned(),
+            })),
+            Instant::now(),
+        );
+        app
+    }
+
+    #[test]
+    fn dimmed_map_keeps_the_crosshair_bright() {
+        let canvas = Canvas::new(8, 6);
+        let area = Rect::new(0, 0, 8, 6);
+        let mut buffer = Buffer::empty(area);
+        MapWidget {
+            canvas: &canvas,
+            palette: Palette::new(Depth::Mono, Shade::Dark),
+            markers: Vec::new(),
+            dim: true,
+        }
+        .render(area, &mut buffer);
+        assert!(!buffer[cursor_cell(8, 6)].modifier.contains(Modifier::DIM));
+    }
+
+    #[test]
+    fn other_copyright_holders_keep_the_long_attribution() {
+        let attribution = "© MapTiler © OpenStreetMap contributors";
+        assert_eq!(short_attribution(attribution), attribution);
+    }
+
+    #[test]
+    fn empty_map_shows_how_to_search_and_get_help() {
+        let line = status_line(120, &app_with_source());
+        assert!(line.contains("/ search") && line.contains("? keys"));
+    }
+
+    #[test]
+    fn narrow_status_shortens_the_attribution_and_keeps_the_help_key() {
+        let line = status_line(44, &app_with_source());
+        assert_eq!(
+            line.split_whitespace().collect::<Vec<_>>().join(" "),
+            "? keys © OpenMapTiles © OpenStreetMap"
+        );
     }
 }

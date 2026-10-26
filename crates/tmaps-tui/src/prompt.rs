@@ -16,6 +16,7 @@ pub struct Search {
     pub selected: usize,
     /// The number of the last search request, until its results arrive.
     pub pending: Option<u64>,
+    pub error: Option<String>,
 }
 
 impl Search {
