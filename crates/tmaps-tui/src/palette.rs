@@ -90,10 +90,24 @@ impl Palette {
             Class::Path => self.color(([100, 100, 90], 241), ([160, 150, 135], 247)),
             Class::MajorRoad => self.color(([220, 190, 110], 179), ([215, 140, 40], 172)),
             Class::Highway => self.color(([240, 140, 70], 208), ([215, 90, 50], 166)),
+            Class::Route => self.route(),
+            Class::Alternative => self.color(([80, 110, 140], 66), ([140, 170, 205], 110)),
             Class::MinorRoad | Class::Green | Class::Water | Class::Building => {
                 self.color(([150, 150, 150], 248), ([140, 140, 140], 245))
             }
         }
+    }
+
+    /// The strong accent of the selected route, see [`Class::Route`].
+    pub fn route(self) -> Color {
+        self.color(([60, 190, 255], 39), ([0, 100, 220], 26))
+    }
+
+    /// The start and end points: reversed, so that they show also without colors.
+    pub fn marker(self) -> Style {
+        Style::new()
+            .fg(self.route())
+            .add_modifier(Modifier::BOLD | Modifier::REVERSED)
     }
 
     /// Labels keep the background of the cells under them.

@@ -3,6 +3,7 @@ use super::label::{self, Candidate};
 use super::style::{Class, classify};
 use super::view::{View, VisibleTile};
 use super::{DOTS_PER_CELL_X, DOTS_PER_CELL_Y};
+use crate::LatLon;
 use crate::mvt::{self, Geometry};
 use crate::tiles::TileId;
 
@@ -68,13 +69,23 @@ impl PreparedTile {
     }
 }
 
-/// Draws the view on a canvas of `width` × `height` cells. `tile` returns a prepared tile, or
-/// `None` for a tile that is not loaded yet. Its area stays empty.
+/// A route that the renderer draws over the tiles.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct RouteLine<'a> {
+    pub points: &'a [LatLon],
+    /// The selected route covers the others.
+    pub selected: bool,
+}
+
+/// Draws the view on a canvas of `width` × `height` cells, with the routes over the map.
+/// `tile` returns a prepared tile, or `None` for a tile that is not loaded yet. Its area stays
+/// empty.
 pub fn render<'a>(
     view: View,
     width: u16,
     height: u16,
     max_zoom: u8,
+    routes: &[RouteLine<'_>],
     tile: impl Fn(TileId) -> Option<&'a PreparedTile>,
 ) -> Canvas {
     let mut canvas = Canvas::new(width, height);
@@ -107,6 +118,18 @@ pub fn render<'a>(
                     }
                 }
             }
+        }
+    }
+    let (width_dots, height_dots) = (canvas.width_dots(), canvas.height_dots());
+    for selected in [false, true] {
+        for route in routes.iter().filter(|route| route.selected == selected) {
+            let class = if selected {
+                Class::Route
+            } else {
+                Class::Alternative
+            };
+            let points = view.line_on_screen(route.points, width_dots, height_dots);
+            draw_line(&mut canvas, &points, class);
         }
     }
     label::place(

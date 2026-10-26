@@ -3,7 +3,8 @@ use super::style::Class;
 use super::{DOTS_PER_CELL_X, DOTS_PER_CELL_Y};
 
 /// A grid of terminal cells. Lines set braille dots and the foreground class; areas set the
-/// background class. Labels cover the cells under their text.
+/// background class. Labels cover the cells under their text. A cell with route dots shows no
+/// map dots, so that the route stays readable.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Canvas {
     width: u16,
@@ -87,6 +88,9 @@ impl Canvas {
         };
         let (column, row) = (x / DOTS_PER_CELL_X, y / DOTS_PER_CELL_Y);
         if let Some(cell) = self.cell_mut(column, row) {
+            if class.is_route() && cell.fg != Some(class) {
+                cell.dots = 0;
+            }
             cell.dots |=
                 DOT_BITS[usize::from(y % DOTS_PER_CELL_Y)][usize::from(x % DOTS_PER_CELL_X)];
             cell.fg = Some(class);
@@ -97,6 +101,19 @@ impl Canvas {
         if let Some(cell) = self.cell_mut(column, row) {
             cell.bg = Some(class);
         }
+    }
+
+    /// Whether a route crosses one of the cells `columns` of `row`.
+    pub(super) fn has_route(&self, row: u16, columns: std::ops::Range<u16>) -> bool {
+        let start = usize::from(row) * usize::from(self.width);
+        columns.into_iter().any(|column| {
+            column < self.width
+                && self
+                    .cells
+                    .get(start + usize::from(column))
+                    .and_then(|cell| cell.fg)
+                    .is_some_and(Class::is_route)
+        })
     }
 
     fn cell_mut(&mut self, column: u16, row: u16) -> Option<&mut Cell> {
@@ -118,6 +135,22 @@ mod tests {
         canvas.set_dot(0, 0, Class::MinorRoad);
         canvas.set_dot(1, 3, Class::MinorRoad);
         assert_eq!(canvas.rows().next().unwrap()[0].symbol(), '⢁');
+    }
+
+    #[test]
+    fn route_dot_removes_the_map_dots_of_its_cell() {
+        let mut canvas = Canvas::new(1, 1);
+        canvas.set_dot(0, 0, Class::MinorRoad);
+        canvas.set_dot(1, 3, Class::Route);
+        assert_eq!(canvas.rows().next().unwrap()[0].symbol(), '⢀');
+    }
+
+    #[test]
+    fn route_dot_removes_the_alternative_dots_of_its_cell() {
+        let mut canvas = Canvas::new(1, 1);
+        canvas.set_dot(0, 0, Class::Alternative);
+        canvas.set_dot(1, 3, Class::Route);
+        assert_eq!(canvas.rows().next().unwrap()[0].symbol(), '⢀');
     }
 
     #[test]

@@ -8,7 +8,7 @@ mod view;
 
 pub use self::canvas::{Canvas, Cell};
 pub use self::label::{Label, LabelClass, cursor_cell};
-pub use self::scene::{PreparedTile, render};
+pub use self::scene::{PreparedTile, RouteLine, render};
 pub use self::style::Class;
 pub use self::view::{MAX_ZOOM, View, VisibleTile};
 

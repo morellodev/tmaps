@@ -17,7 +17,6 @@ thiserror = "2"
 tmaps-core = { version = "0.1.0", path = "../tmaps-core" }
 tmaps-tui = { version = "0.1.0", path = "../tmaps-tui" }
 tokio = { version = "1", features = ["macros", "rt"] }
-toml_edit = "0.25"
 
 [lints]
 workspace = true

@@ -40,7 +40,7 @@ The config file can change each endpoint. Providers are concrete types for now. 
 - XDG paths on all platforms (`etcetera`):
   - config: `~/.config/tmaps/config.toml` (includes `[places]`)
   - state: `~/.local/state/tmaps/` (last view)
-  - cache: `~/.cache/tmaps/` (500 MB LRU for tiles that obeys `Cache-Control`; geocode results for 24 h from M4, for autocomplete; no route cache)
+  - cache: `~/.cache/tmaps/` (500 MB LRU for tiles that obeys `Cache-Control`; no route cache). Autocomplete results stay in an in-memory LRU for the session only.
 
 ## TUI
 
@@ -52,11 +52,14 @@ The config file can change each endpoint. Providers are concrete types for now. 
   - `s`/`e`: set start/end. `x`: swap. `c`: clear.
   - `1`/`2`/`3`: car/bike/foot.
   - `Tab`: next alternative route.
+  - `]`/`[`: next/previous step of the itinerary. The map centers on the step, at street zoom or closer.
   - `p`: toggle the panel.
   - `m`: save the cursor as a named place. `'`: jump to a place.
   - `?`: help. `q`: quit.
-- The route request starts when both points are set or when the mode changes.
-- The itinerary panel is on the right. Below about 100 columns, it becomes a bottom drawer. It shows the mode, a summary for each alternative, and the steps. Select a step to center the map on it.
+- `s` and `e` take the point under the crosshair. Its name comes from a reverse geocode. Until the name arrives, or when there is no name, the panel shows the coordinates. The `A` and `B` markers cover the crosshair.
+- The route request starts when both points are set or when the mode changes. Each request has a number, so a late result of an older request is dropped. When new routes arrive, the view fits them.
+- The selected route clears the map dots in its cells and labels keep away from it, so it stays readable.
+- The itinerary panel is on the right. Below 100 columns, it becomes a bottom drawer, with the steps next to the summary. It shows when a point is set. It shows the mode, the points, a summary for each alternative, and the steps, with the distance first.
 - Colors: truecolor with a 256-color fallback. Dark and light themes. `theme = "auto"` (the default) asks the terminal for its background color with `terminal-colorsaurus` before the event reader starts. A terminal that does not answer gets the dark theme after a 1 s timeout. Obey `NO_COLOR`. The route uses a strong accent color. Alternatives are dimmed.
 - When the network fails, show cached tiles and an error in the status line. Route and search errors also go to the status line.
 

@@ -13,10 +13,13 @@ pub enum Class {
     MinorRoad,
     MajorRoad,
     Highway,
+    /// A route that is not selected. Routes come from the overlay, not from tiles.
+    Alternative,
+    Route,
 }
 
 impl Class {
-    pub const ALL: [Self; 10] = [
+    pub const ALL: [Self; 12] = [
         Self::Green,
         Self::Water,
         Self::Building,
@@ -27,12 +30,19 @@ impl Class {
         Self::MinorRoad,
         Self::MajorRoad,
         Self::Highway,
+        Self::Alternative,
+        Self::Route,
     ];
 
     /// Areas fill the background of cells. The other classes draw lines of dots.
     #[must_use]
     pub fn is_area(self) -> bool {
         matches!(self, Self::Green | Self::Water | Self::Building)
+    }
+
+    #[must_use]
+    pub fn is_route(self) -> bool {
+        matches!(self, Self::Alternative | Self::Route)
     }
 
     pub(super) fn index(self) -> usize {

@@ -6,16 +6,23 @@ use crossterm::event::{
     Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
 };
 use lru::LruCache;
-use tmaps_core::render::{Canvas, DOTS_PER_CELL_X, DOTS_PER_CELL_Y, PreparedTile, View, render};
+use tmaps_core::render::{
+    Canvas, DOTS_PER_CELL_X, DOTS_PER_CELL_Y, PreparedTile, RouteLine, View, render,
+};
+use tmaps_core::routing::{Mode, Route};
 use tmaps_core::tiles::TileId;
 
-use crate::loader::{Message, SourceInfo};
+use crate::message::{Message, SourceInfo};
+use crate::services::Request;
+use crate::trip::{End, Routes, Trip};
 
 /// Holds more tiles than the largest screen shows, so that a pan back does not reload them.
 const TILE_CACHE_SIZE: NonZeroUsize = NonZeroUsize::new(64).unwrap();
 const RETRY_AFTER: Duration = Duration::from_secs(10);
 const PAN_STEP: f64 = 0.1;
 const FAST_PAN_STEP: f64 = 0.5;
+/// A step of the itinerary is a street corner, so the map zooms in at least to street level.
+const STEP_ZOOM: f64 = 16.0;
 
 pub struct App {
     view: View,
@@ -28,6 +35,8 @@ pub struct App {
     help: bool,
     quit: bool,
     drag_from: Option<(u16, u16)>,
+    trip: Trip,
+    panel: bool,
 }
 
 enum SourceState {
@@ -50,6 +59,8 @@ impl App {
             help: false,
             quit: false,
             drag_from: None,
+            trip: Trip::default(),
+            panel: true,
         }
     }
 
@@ -69,8 +80,23 @@ impl App {
         self.quit
     }
 
+    /// A route error first: it is the answer to the last action of the user.
     pub fn error(&self) -> Option<&str> {
-        self.error.as_deref()
+        self.trip.error().or(self.error.as_deref())
+    }
+
+    pub fn trip(&self) -> &Trip {
+        &self.trip
+    }
+
+    /// The itinerary panel shows when a point is set, until the user hides it.
+    pub fn panel_visible(&self) -> bool {
+        self.panel && !self.trip.is_empty()
+    }
+
+    /// The requests for the providers since the last call.
+    pub fn take_requests(&mut self) -> Vec<Request> {
+        self.trip.take_requests()
     }
 
     pub fn attribution(&self) -> Option<&str> {
@@ -117,6 +143,19 @@ impl App {
             Message::Skipped(id) => {
                 self.pending.remove(&id);
             }
+            Message::Routes(id, result) => {
+                if let Some(routes) = self.trip.receive_routes(id, result) {
+                    let points: Vec<_> = routes
+                        .iter()
+                        .flat_map(|route| route.geometry.iter().copied())
+                        .collect();
+                    let (width, height) = self.map_size_dots();
+                    if let Some(view) = View::fitting(&points, width, height) {
+                        self.view = view;
+                    }
+                }
+            }
+            Message::PlaceName(id, name) => self.trip.receive_name(id, name),
         }
     }
 
@@ -184,7 +223,13 @@ impl App {
         let Some(max_zoom) = self.max_zoom() else {
             return Canvas::new(width, height);
         };
-        render(self.view, width, height, max_zoom, |id| {
+        let routes = match self.trip.routes() {
+            Routes::Ready {
+                routes, selected, ..
+            } => route_lines(routes, *selected),
+            _ => Vec::new(),
+        };
+        render(self.view, width, height, max_zoom, &routes, |id| {
             self.tiles.peek(&id)
         })
     }
@@ -208,6 +253,12 @@ impl App {
         let step = if shift { FAST_PAN_STEP } else { PAN_STEP };
         match key.code {
             KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => self.quit = true,
+            _ if key
+                .modifiers
+                .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT) =>
+            {
+                return false;
+            }
             KeyCode::Char('q') => self.quit = true,
             KeyCode::Char('?') => self.help = !self.help,
             KeyCode::Esc => self.help = false,
@@ -221,6 +272,17 @@ impl App {
             KeyCode::Char('J') => self.pan_screens(0.0, FAST_PAN_STEP),
             KeyCode::Char('+' | '=') => self.view = self.view.zoom_by(1.0),
             KeyCode::Char('-' | '_') => self.view = self.view.zoom_by(-1.0),
+            KeyCode::Char('s') => self.trip.set(End::Start, self.view.center()),
+            KeyCode::Char('e') => self.trip.set(End::End, self.view.center()),
+            KeyCode::Char('x') => self.trip.swap(),
+            KeyCode::Char('c') => self.trip.clear(),
+            KeyCode::Char('1') => self.trip.set_mode(Mode::Car),
+            KeyCode::Char('2') => self.trip.set_mode(Mode::Bike),
+            KeyCode::Char('3') => self.trip.set_mode(Mode::Foot),
+            KeyCode::Tab => self.trip.next_alternative(),
+            KeyCode::Char('p') if !self.trip.is_empty() => self.panel = !self.panel,
+            KeyCode::Char(']') => self.show_step(1),
+            KeyCode::Char('[') => self.show_step(-1),
             _ => return false,
         }
         true
@@ -254,6 +316,12 @@ impl App {
         true
     }
 
+    fn show_step(&mut self, delta: isize) {
+        if let Some(location) = self.trip.move_step(delta) {
+            self.view = View::new(location, self.view.zoom().max(STEP_ZOOM));
+        }
+    }
+
     /// Pans by a fraction of the map width and height.
     fn pan_screens(&mut self, x: f64, y: f64) {
         let (width, height) = self.map_size_dots();
@@ -261,11 +329,23 @@ impl App {
     }
 }
 
+fn route_lines(routes: &[Route], selected: usize) -> Vec<RouteLine<'_>> {
+    routes
+        .iter()
+        .enumerate()
+        .map(|(index, route)| RouteLine {
+            points: &route.geometry,
+            selected: index == selected,
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use tmaps_core::LatLon;
 
     use super::*;
+    use crate::trip::sample_route;
 
     fn milan() -> LatLon {
         LatLon::new(45.4642, 9.19).unwrap()
@@ -332,6 +412,118 @@ mod tests {
         let mut app = ready_app();
         app.handle(&press(KeyCode::Char('q'), KeyModifiers::NONE));
         assert!(app.should_quit());
+    }
+
+    fn key(app: &mut App, code: KeyCode) {
+        app.handle(&press(code, KeyModifiers::NONE));
+    }
+
+    /// Sets the start at the center, the end one screen east, and returns the route request.
+    fn plan_route(app: &mut App) -> Request {
+        key(app, KeyCode::Char('s'));
+        key(app, KeyCode::Char('L'));
+        key(app, KeyCode::Char('L'));
+        key(app, KeyCode::Char('e'));
+        *app.take_requests().last().unwrap()
+    }
+
+    fn route_id(request: Request) -> u64 {
+        match request {
+            Request::Route { id, .. } => id,
+            Request::PlaceName { .. } => panic!("not a route request"),
+        }
+    }
+
+    #[test]
+    fn route_goes_from_the_start_to_the_end() {
+        let mut app = ready_app();
+        let end = View::new(milan(), 14.0).pan(200.0, 0.0).center();
+        assert_eq!(
+            plan_route(&mut app),
+            Request::Route {
+                id: 3,
+                from: View::new(milan(), 14.0).center(),
+                to: end,
+                mode: Mode::Car
+            }
+        );
+    }
+
+    #[test]
+    fn new_routes_fit_the_view() {
+        let mut app = ready_app();
+        let id = route_id(plan_route(&mut app));
+        let rome = LatLon::new(41.9028, 12.4964).unwrap();
+        app.receive(
+            Message::Routes(id, Ok(vec![sample_route(&[milan(), rome])])),
+            Instant::now(),
+        );
+        assert!(app.view().zoom() < 8.0);
+    }
+
+    #[test]
+    fn bracket_centers_the_map_on_the_next_step() {
+        let mut app = ready_app();
+        let id = route_id(plan_route(&mut app));
+        let step = LatLon::new(45.47, 9.2).unwrap();
+        app.receive(
+            Message::Routes(id, Ok(vec![sample_route(&[step, milan()])])),
+            Instant::now(),
+        );
+        key(&mut app, KeyCode::Char(']'));
+        assert_eq!(app.view(), View::new(step, STEP_ZOOM));
+    }
+
+    #[test]
+    fn route_error_shows_before_a_tile_error() {
+        let mut app = ready_app();
+        let id = route_id(plan_route(&mut app));
+        let now = Instant::now();
+        app.receive(
+            Message::Tile(TileId { z: 14, x: 0, y: 0 }, Err("timeout".to_owned())),
+            now,
+        );
+        app.receive(Message::Routes(id, Err("no route found".to_owned())), now);
+        assert_eq!(app.error(), Some("no route found"));
+    }
+
+    #[test]
+    fn p_hides_the_panel() {
+        let mut app = ready_app();
+        key(&mut app, KeyCode::Char('s'));
+        key(&mut app, KeyCode::Char('p'));
+        assert!(!app.panel_visible());
+    }
+
+    #[test]
+    fn p_without_points_does_not_hide_the_next_panel() {
+        let mut app = ready_app();
+        key(&mut app, KeyCode::Char('p'));
+        key(&mut app, KeyCode::Char('s'));
+        assert!(app.panel_visible());
+    }
+
+    #[test]
+    fn alt_c_does_not_clear() {
+        let mut app = ready_app();
+        key(&mut app, KeyCode::Char('s'));
+        app.handle(&press(KeyCode::Char('c'), KeyModifiers::ALT));
+        assert!(!app.trip().is_empty());
+    }
+
+    #[test]
+    fn panel_is_hidden_without_points() {
+        assert!(!ready_app().panel_visible());
+    }
+
+    #[test]
+    fn ctrl_c_quits_and_c_clears() {
+        let mut app = ready_app();
+        key(&mut app, KeyCode::Char('s'));
+        key(&mut app, KeyCode::Char('c'));
+        let cleared = app.trip().is_empty() && !app.should_quit();
+        app.handle(&press(KeyCode::Char('c'), KeyModifiers::CONTROL));
+        assert!(cleared && app.should_quit());
     }
 
     #[test]

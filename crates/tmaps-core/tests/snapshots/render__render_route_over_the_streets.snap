@@ -1,0 +1,89 @@
+---
+source: crates/tmaps-core/tests/render.rs
+assertion_line: 143
+expression: "snapshot_with_routes(MILAN_Z14, 14.0, \"it-IT\", &routes)"
+---
+               ⢣              ⠈⠉⠑⡗⠢⠤⢄⣀⣀⠈⠉⠙⠒⠢⠤⢄⡜⣿⡦⡷⠏⠉⠓⢦⣀                       ⡰ ⡏⡳⠤⡀         ⢠⠊     
+                ⠙⡄               ⡇     ⠉⠉⠒⠤⢄ ⢀⣼⣟⡞     ⠉⠓⢦⣀                   ⡰⠁⢠⠟⢠⠃⠈⠑⠢⣀     ⣰⠁      
+                 ⠈⢆              ⢱          ⠉⣿⡟⠋⠈⠢⡀      ⠈⠛⠦                ⡰⠁⢠⠧⣠⠊     ⠑⠤⡀⢀⠜ ⠁⠢⣀    
+   ⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠲⡀            ⡰⠁⢠⠃⢠⠃        ⡸⠃     ⠑⠤⡀ 
+   ⠈⡆               ⠱⡀           ⢸        ⡰⠃        ⠑⢄        ⢣           ⡜ ⡠⠃⡰⠁       ⢀⠜         ⠈⠑
+    ⠸⡀               ⠈⢢          ⡎      ⣠⠞⠁      ⢀⡀   ⠱⡀      ⠈⡆      ⢀⡠⠤⠚ ⣠⣃⡰⠁       ⡠⠊            
+     ⢣                 ⠑⢄       ⢸⠢⢄    ⣴⠋       ⡠⠃⠈⢢   ⠈⢢      ⠸⡀  ⢀⡠⠤⠒⠒⠒⠒⢻⡇ ⠁      ⢠⠊              
+      ⢇         ⢤       ⠈⠢⡀    ⢀⠇  ⠉⠢⢤⡾⠊      ⡠⠊    ⢑⡄   ⠑⢄   ⢀⣀⢣⠒⠉⠁   ⣀⡠⠴⠒⡇       ⡰⠁             ⡠⠊
+⣀⣀⠤⠤⡄ ⠘⡄         ⠑⡄       ⠘⢄   ⡜    ⣰⠟⠁     ⡠⠊⠢⣀  ⡠⠒⠁⠈⠢⡀  ⠈⠢⡔⠊⠁ ⠈⢆⣀⠤⠔⠒⠉    ⠸⡀    ⢀⠾⡀           ⢀⣀⡶⠥⠤
+⠁   ⢸  ⢱          ⠈⢆        ⠣⡠⠎   ⢀⡼⠃     ⡠⠊   ⢈⡢⠊     ⡱⠄   ⠈⠢⡔⠒⠉⠘⡄       ⢀⡠⢧  ⢀⠤⠃ ⠑⢄⡀⢀⣀⡠⠤⠔⢖⠒⠉⠉⠁⠈⡆  
+⢠    ⡇  ⢇           ⠣⡀    ⣀⠔⠉    ⣠⡟     ⢠⠊    ⡔⠁    ⢀⡠⠊       ⠘⢄  ⢱  ⣀⡠⠔⠒⠉⠁  ⠣⡠⠃     ⠙⡅    ⠸⡀    ⢣  
+⠈⡖⠒⠒⠉⢹  ⠈⡆           ⠑⢄ ⡠⠔⠁     ⡴⠃⠈⠢⡀ ⢀⠔⠁  ⡠⠔⠉    ⢀⠔⠁           ⠑⣤⠔⢇⠉        ⡔⠁       ⢱     ⡇    ⠘⡄ 
+⠉⢸    ⡇  ⠸⡀          ⢀⠜⠊      ⣠⠎⠑⠤⡀ ⠈⠑⢅  ⡠⠊⠁    ⡠⠊⠁           ⢀⡠⠊⠉⠢⠘⡄      ⢀⠎         ⠈⡆    ⢸     ⢣ 
+ ⠈⡆   ⠸⡀  ⢣   ⣀⣀⣀⣠⠤⠔⠊⠁ ⢀⢄   ⢀⡔⠁   ⠈⠢⡀  ⠑⢎    ⢀⠤⠊            ⣀⠔⠁    ⠑⠱⡀    ⡠⠃       ⡤⠤⠤⠤⢵     ⡇  ⣀⣀⠼⣀
+⣀⠤⠧⠤⠤⠤⠒⢗⠒⠒⠈⡆⠉⠉   ⢸   ⡠⠒⠁ ⠑⠢⡠⠋       ⠈⠲⡀  ⠑⡄⣀⠔⠁           ⢀⡠⠊        ⠈⢣   ⡔⠁        ⢳   ⠈⣦⠤⠤⠒⠒⠊⠉⠉   ⢇
+       ⠈⡆  ⠸⡀     ⡇⢠⠊    ⢀⡜⠁          ⢹   ⠈⠢⡀          ⡠⠔⠁           ⠈⡆⣀⠜          ⠈⢆ ⡔⠊           ⠸
+        ⠸⡀  ⢱   ⢀⣀⠟⢅    ⣠⠎            ⠘⣄    ⠘⢄      ⢀⠤⠊               ⠸⡀⢆         ⢀⡠⠜⠊              
+         ⠱⣀⡠⠤⢇⠒⠉⠁   ⠉⠦⡀⡴⢇              ⠘⡄     ⠱⡀  ⢠⠴⡁                ⡰⠁⢣⠈⢆   ⣀⡠⠤⠒⠊⠁                 
+          ⠈⠢⡀⠘⡄      ⢀⠞  ⠉⠒⠤⢄           ⠈⢆     ⠈⣢⠒⠁ ⠑⡄              ⡔⠁ ⠈⢆⠈⢳⠊⠉                       
+            ⠈⠢⢱     ⡰⠋       ⠙⡄          ⠈⠲⡀ ⢀⠔⠉ ⠑⢄  ⠈⢆           ⢀⠞    ⠘⡄ ⢣                        
+              ⠈⢇⡀ ⢀⠞⠁         ⠈⢆           ⣑⠮⢵    ⠈⠢⡀  ⠳⡀        ⢠⠃      ⢱  ⢣                       
+               ⠈⡆⣢⠋            ⢈⣆       ⢀⡠⠊   ⢇     ⠉⠢⡠⠔⠉⠣⡀     ⢠⠃        ⢇⢆ ⢣                ⢀⣀⡠⠤⠔⠒
+⢆          ⣠   ⢀⠸⡀⠳⢄⡀        ⡤⠒⠉⠈⢦     ⡔⠁     ⠘⡄      ⠑⡄  ⠘⢄   ⢠⡎         ⠘⡄⢆ ⢣       ⣀⣀⣠⠤⠤⠒⠊⠉⠁     
+⠈⢣       ⢀⡎ ⠉⢲⠴⠋ ⢣  ⠈⠲⢄⣀⣀⡠⠒⠉⠉⠑⠒⠒⠢⢎   ⣀⠤⠧⠤⠤⠤⠤⠤⠤⢄⣱⣀⣀⣀⣀⣀⣀⣀⣈⢢  ⢸  ⢰⡳⠁        ⢀⣀⠱⡀⠤⠜⡖⠒⠒⠊⠉⠉⠉  ⠈⡆          
+  ⢣    ⢀⡠⠊  ⡰⠋   ⠈⡆              ⢈⢟⠋⠉           ⢇       ⠉⠉⠉⠉⠉⠉⠉⠙⠒⠒⠒⠒⠒⠒⢲⠊⠉⠁  ⢣⡀⢰⠁         ⢸          
+   ⢳ ⢀⠔⠁  ⢀⡜⠣⡄    ⠸⡀            ⡠⠊⠈⢆            ⠸⡀                  ⢰⠒⢺⡀    ⠈⡆⢸           ⢇        ⢀
+⣀⣀⣀⠤⡏⠁   ⣠⠎  ⡇     ⢱          ⢀⠔⠁  ⠈⡆            ⢣                  ⡜  ⡇    ⢸⠸⡀           ⣸⣀⠤⠤⠒⠒⠉⢹⠉⠁
+    ⠈⠑⢄⡀⣰⡏   ⡇      ⢇        ⡰⠊     ⠘⡄           ⠈⡆                 ⠉⠉⠉⢱    ⢸ ⢣    ⢀⣀⡠⠔⠒⠊⠉ ⢣     ⠘⡄ 
+      ⢀⣵⣁⡇   ⡇      ⠘⡄       ⠘⠢⡀     ⢱⡀           ⠸⡀          ⢰⠉⠉⢱⠖⠒⠒⠒⠤⠼⡦⠤⠤⠤⡼⠤⠈⢆⠒⠊⠉⠁       ⠘⡄     ⢇ 
+⠛⠛⠛⠛⠛⢛⠏⠁ ⡇   ⡇       ⢱         ⠈⠢⡀    ⢱                       ⡜  ⢸      ⢸  ⢰⠁ ⡎⠘⡄           ⢹⣀⣀⡠⠤⠤⠜⠒
+    ⠠⠊   ⡇   ⡇        ⢇          ⠈⠢⣄⠠⠂⠁                     ⢠⠊   ⢸      ⢸⣀ ⡎ ⢸  ⢱            ⡇      
+         ⡏⠉⠉⠉⡇        ⠈⡆                                   ⡜⠁    ⢸     ⢠⠇⠈⠉ ⢠⠃   ⢇ ⢀⣀⣀⠤⠤⠤⠒⠒⠒⠉⢇      
+⡀        ⡇   ⠁         ⠸⡀                          ⢠⠤⠒⢦  ⢀⠎      ⠜    ⢀⠎   ⢀⠯⠤⠔⠒⠊⠘⡄⠁         ⢸      
+⢷⣄       ⡇              ⢣                          ⢸  ⠈⢢⡤⠃           ⢀⠎    ⡎      ⠱⡀         ⠈⡆     
+⠋⠙⢗⣤⡀    ⡇              ⠈⡆                       ⢰⠒⠊  ⡠⠊            ⢠⠎    ⡸ ⢀⣀⡠⠤⠤⡆ ⢣          ⢇     
+  ⢀⡿⢝⢦⡀  ⡇               ⠸⡀           ⢰          ⢸   ⡔⠁            ⡠⠃    ⣠⠋⠉⠁    ⢸ ⠈⡆         ⢸     
+⢀⠔⠋  ⠉⢻⣦⡀⡇                ⠱⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠤⠸         ⠘⡄    
+⢧⡀    ⡴⠓⢻⡇                            ⢸⠁ ⢱⠊⠉⠉⠁    ⠑⡶⠁    ⠈⠑⠢⢄⡀   ⡜    ⢠⠊          ⢸       ⢀⣀⣀⣀⣀⡇    
+ ⠑⠤⡀⣠⠞  ⢸⣇⣀⣀⡀⢀⣀⣀⣀⡀                    ⢸⣶⣶⣭⣷⣶⣤⡀   ⡠⠎          ⠈⠉⠒⠪⠤⢄⣀ ⣰⠁   ⣀⣀⣀⡠⠤⠤⠔⠒⠒⡗⠒⠊⠉⠉⠉⠉⠁         
+  ⢀⡿⠁   ⢸⡇ ⢀⡔⠁   ⠸⡄                  ⢀⣸⠁     ⢳⢀⡴⠋  ⢀⣀⣀⣀⣀⣀⣀⣀         ⡝⠙⠓⠶⢎⡉         ⡇                
+
+               m              mmmmmmmmmmmmmmmmmmmmmmmmm           gggggg     grgmmmmgggggggggmm     
+                mm     gg  ggggg m     mmmmm mmmm     mmmm        gggggggggggrrmmmmmmmmgggg mm      
+                 mm    ggggggggggm          mmmmmmm      mmm      gggggggggwrrmmmm     mmmmm mmm    
+   RRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRRR   gggwwggggrrmmmm        mm     mmm 
+   aa          g g  mm   ggg g g m        mm        mm        R    ggwggwgrgmmmm       mm         mm
+   gaa   gg    gggg  mm  gg      m      mmt      mm   mm      RR   gggrrrrgmmmm       mm  g   gg    
+     a  gggggggggggg   mm       mmm    mm       mmmm   mm      RR  mmmmmmmmmgm      mm    gggggg    
+      a  ggggg  m  ggg  mmm    mm  mmmmm      mm    mm   mm   mmRmmmgggmmmmm       mm    ggg ggg  mm
+mmmmm aagggggg   mm       mm   m    mmm     mmmm  mmmmmm  mmmmm RRmmmmm   gmm    mmm    gggg  gmmmmm
+m   m  aggggggg   mm        mmm   tmm     mm   mmm     mm   mmmmmRR       mmm  mmm mmmmmmmmmmmmmmm  
+m    m  agggg       mm    mmm    mm     mm    mm    mmm       mm  R  mmmmmm  mmm     mm    mm    m  
+mmmmmm  aagg         mm mmm     mmmmm mmm  mmm    mmm           mmmRm        mm       m     m    mm 
+mm    m  aa          mmm      mmmmm mmm  mmm    mmm           mmmmmRR      mm         mm    m     m 
+ mm   mm  a   mmmmmmmm mm   tmm   mmm  mm    mmm            mmm    mRR    mm       mmmmm     m  mmmm
+mmmmmmmmmmaamm   mgg mmm mmmm   gg  mmm  mmmmm           mmm        mR   mm        m   mmmmmmmmm   m
+       mm  aa     mmm    tmm   ggg    m   mmm          mmm           RRmm          mm mmg          m
+        mm  a   mmmm    mm   gggggg   mm    mm      mmm               RRm         mmmmg             
+         mmmmammm   mmmmm    g ggg g   mm     mm  mmm                mmRmm   mmmmmmggggg            
+          mmmaa      mm  mmmm   ggggg   mm     mmmm mm              mm RRmmmm  ggggggggg            
+            mma     mm       mm   gggw   mmm mmm mm  mm           mm    RR m  gggggggggg            
+              mam mmt         mm   ggggg   mmm    mmm  mm        mm      R  m   ggggg               
+               aamm            mm  ggg  mmm   m     mmmmmmm     mm        Rm m                mmmmmm
+m  g       m   maammm        mmmmm     mm     mm      mm  mm   mm         RRm m       mmmmmmmmm     
+mm  g    mm mmmm a  mmmmmmmmmmmmmmgggmmmmmmmmmmmmmmmmmmmm  m  mmm        mmRRmmmmmmmmm  mm      gggg
+  m    mmm  mm   aa              mmmm           m       mmmmmmmmmmmmmmmmmm  Rmmm         m      gggg
+   m mmm  mmmm    aa            mmmm            mm                  mmmm    RRm           m      g m
+mmmmmm   mm  m     a          mmm  mm            m                  m  m    mRR           mmmmmmmmmm
+    mmmmmm   m      a        mm     mm           mm                 mmmm    m R    mmmmmmm m     mm 
+      tmmm   m      aa       mmm     mm           mm          mmmmmmmmmmmmmmmmRRmmmm       mm     m 
+mmmmmmmm m   m       a         mmm    m                       m  m      m  mm mRR           mmmmmmmm
+    mm   m   m        a          mmmmmm                     mm   m      mm m m  R          ggm      
+         mmmmm        aa                                   mm    m     mmmm mm   R mmmmmmmmmmm      
+t        m   m         aa                          mmmm  mm      m    mm   mmmmmmRRm         m      
+mt       m              a                          m  mmmm           mm    m      RR         mm     
+mmmtt    m              aa                       mmm  mm            mm    m mmmmmm R gggggggggm     
+  mmmtt  mg              aa           m          m   mm            mm    mmmm    m RRgggggggggm     
+mmm  mmmtmg               aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaR ggggggggmm    
+mt    mmmm                            mm mmmmm    mmm    mmmmm   m    mm          m    gggmmmmmm    
+ mmmmm  tmmmmttttt                    mmmmmmmt   mmg         mmmmmmm mm   mmmmmmmmmmmmmmmmm     g   
+  mmm   mt ttt   tt                  mmt     mmmmg tttttttt         mmmmmm         m                
+
+35, 12 City: Milano
+39, 53 Suburb: Verziere

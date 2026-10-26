@@ -2,7 +2,7 @@ use std::f64::consts::PI;
 
 use tmaps_core::LatLon;
 use tmaps_core::mvt::Tile;
-use tmaps_core::render::{Canvas, Class, PreparedTile, View, render};
+use tmaps_core::render::{Canvas, Class, PreparedTile, RouteLine, View, render};
 use tmaps_core::tiles::{DEFAULT_MAX_ZOOM, TileId};
 
 const WIDTH: u16 = 100;
@@ -27,11 +27,15 @@ fn center_of(id: TileId) -> LatLon {
     LatLon::new(lat, x * 360.0 - 180.0).unwrap()
 }
 
-/// Renders the view with only the fixture tile loaded: braille rows, class rows, then labels.
 fn snapshot(id: TileId, zoom: f64, lang: &str) -> String {
+    snapshot_with_routes(id, zoom, lang, &[])
+}
+
+/// Renders the view with only the fixture tile loaded: braille rows, class rows, then labels.
+fn snapshot_with_routes(id: TileId, zoom: f64, lang: &str, routes: &[RouteLine<'_>]) -> String {
     let tile = fixture(id, lang);
     let view = View::new(center_of(id), zoom);
-    let canvas = render(view, WIDTH, HEIGHT, DEFAULT_MAX_ZOOM, |requested| {
+    let canvas = render(view, WIDTH, HEIGHT, DEFAULT_MAX_ZOOM, routes, |requested| {
         (requested == id).then_some(&tile)
     });
     format!(
@@ -88,6 +92,8 @@ fn letter(class: Class) -> char {
         Class::MinorRoad => 'm',
         Class::MajorRoad => 'M',
         Class::Highway => 'H',
+        Class::Alternative => 'a',
+        Class::Route => 'R',
     }
 }
 
@@ -116,4 +122,23 @@ fn render_region() {
 #[test]
 fn render_region_in_english() {
     insta::assert_snapshot!(snapshot(MILAN_Z5, 5.0, "en-US"));
+}
+
+#[test]
+fn render_route_over_the_streets() {
+    let center = center_of(MILAN_Z14);
+    let at = |dlat: f64, dlon: f64| LatLon::new(center.lat() + dlat, center.lon() + dlon).unwrap();
+    let route = [at(0.004, -0.008), at(0.004, 0.002), at(-0.004, 0.006)];
+    let alternative = [at(0.004, -0.008), at(-0.004, -0.004), at(-0.004, 0.006)];
+    let routes = [
+        RouteLine {
+            points: &route,
+            selected: true,
+        },
+        RouteLine {
+            points: &alternative,
+            selected: false,
+        },
+    ];
+    insta::assert_snapshot!(snapshot_with_routes(MILAN_Z14, 14.0, "it-IT", &routes));
 }

@@ -6,22 +6,10 @@ use tmaps_core::render::PreparedTile;
 use tmaps_core::tiles::{TileId, TileSource};
 use tokio::sync::{Semaphore, mpsc};
 
+use crate::message::{Message, SourceInfo};
+
 /// More parallel requests than a browser makes to one host would be unfair to a free server.
 const MAX_REQUESTS: usize = 6;
-
-#[derive(Debug)]
-pub enum Message {
-    Source(Result<SourceInfo, String>),
-    Tile(TileId, Result<Box<PreparedTile>, String>),
-    /// The tile left the screen before its request started.
-    Skipped(TileId),
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SourceInfo {
-    pub max_zoom: u8,
-    pub attribution: String,
-}
 
 /// Loads tiles in background tasks and sends each result as a [`Message`].
 pub struct Loader {
@@ -33,17 +21,15 @@ pub struct Loader {
 }
 
 impl Loader {
-    /// `lang` is the BCP 47 tag for the names on the labels. The receiver gets the results.
-    pub fn new(source: TileSource, lang: &str) -> (Self, mpsc::UnboundedReceiver<Message>) {
-        let (sender, receiver) = mpsc::unbounded_channel();
-        let loader = Self {
+    /// `lang` is the BCP 47 tag for the names on the labels.
+    pub fn new(source: TileSource, lang: &str, sender: mpsc::UnboundedSender<Message>) -> Self {
+        Self {
             source: Arc::new(source),
             permits: Arc::new(Semaphore::new(MAX_REQUESTS)),
             wanted: Arc::default(),
             lang: Arc::from(lang),
             sender,
-        };
-        (loader, receiver)
+        }
     }
 
     pub fn load_source(&self) {

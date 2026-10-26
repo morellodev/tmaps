@@ -4,7 +4,6 @@ mod args;
 mod error;
 mod location;
 mod output;
-mod places;
 mod text;
 mod time;
 
@@ -22,7 +21,7 @@ use tmaps_core::geocode::SearchOptions;
 use tmaps_core::providers::photon::Photon;
 use tmaps_core::providers::valhalla::Valhalla;
 use tmaps_core::routing::{Route, RouteRequest};
-use tmaps_core::{ATTRIBUTION, Error, LatLon, http};
+use tmaps_core::{ATTRIBUTION, Error, LatLon, http, places};
 
 use crate::args::{Cli, Command, Format, GeometryFormat, PlacesAction, RouteArgs, TripArgs};
 use crate::error::CliError;

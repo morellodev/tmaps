@@ -2,8 +2,11 @@
 
 mod app;
 mod loader;
+mod message;
 mod palette;
 mod saved_view;
+mod services;
+mod trip;
 mod ui;
 
 use std::io;
@@ -14,14 +17,18 @@ use crossterm::event::{DisableMouseCapture, EnableMouseCapture, EventStream};
 use crossterm::execute;
 use futures_util::StreamExt;
 use ratatui::DefaultTerminal;
-use tmaps_core::config::{Config, Paths};
+use tmaps_core::config::{Config, Paths, Units};
 use tmaps_core::http;
+use tmaps_core::providers::photon::Photon;
+use tmaps_core::providers::valhalla::Valhalla;
 use tmaps_core::tiles::{DEFAULT_CACHE_BYTES, DiskCache, TileSource};
 use tokio::sync::{Notify, mpsc};
 
 use crate::app::App;
-use crate::loader::{Loader, Message};
+use crate::loader::Loader;
+use crate::message::Message;
 use crate::palette::Palette;
+use crate::services::Services;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -43,10 +50,18 @@ pub enum Error {
 /// after the quit, and [`Error::Panic`] if a background task panics.
 pub async fn run(config: &Config, paths: &Paths) -> Result<(), Error> {
     let cache = DiskCache::new(paths.cache_dir.join("tiles"), DEFAULT_CACHE_BYTES);
-    let source = TileSource::new(http::client()?, &config.endpoints.tilejson, cache);
+    let client = http::client()?;
+    let source = TileSource::new(client.clone(), &config.endpoints.tilejson, cache);
     let view = saved_view::initial(&paths.state_dir, config.places.get("home").copied());
     let mut app = App::new(view);
-    let (loader, receiver) = Loader::new(source, &config.lang);
+    let (sender, receiver) = mpsc::unbounded_channel();
+    let loader = Loader::new(source, &config.lang, sender.clone());
+    let services = Services::new(
+        Photon::new(client.clone(), &config.endpoints.photon),
+        Valhalla::new(client, &config.endpoints.valhalla),
+        &config.lang,
+        sender,
+    );
     let palette = Palette::detect(config.theme);
 
     let mut terminal = ratatui::try_init().inspect_err(|_| ratatui::restore())?;
@@ -56,10 +71,11 @@ pub async fn run(config: &Config, paths: &Paths) -> Result<(), Error> {
         Ok(()) => {
             let channels = Channels {
                 loader,
+                services,
                 receiver,
                 panicked: &panicked,
             };
-            event_loop(&mut terminal, &mut app, channels, palette).await
+            event_loop(&mut terminal, &mut app, channels, palette, config.units).await
         }
         Err(error) => Err(error.into()),
     };
@@ -83,6 +99,7 @@ fn install_panic_hook(panicked: Arc<Notify>) {
 /// What the event loop waits on, besides terminal events.
 struct Channels<'a> {
     loader: Loader,
+    services: Services,
     receiver: mpsc::UnboundedReceiver<Message>,
     panicked: &'a Notify,
 }
@@ -92,9 +109,11 @@ async fn event_loop(
     app: &mut App,
     channels: Channels<'_>,
     palette: Palette,
+    units: Units,
 ) -> Result<(), Error> {
     let Channels {
         loader,
+        services,
         mut receiver,
         panicked,
     } = channels;
@@ -102,7 +121,8 @@ async fn event_loop(
     let mut dirty = true;
     loop {
         let size = terminal.size()?;
-        app.set_map_size(size.width, size.height.saturating_sub(ui::STATUS_HEIGHT));
+        let (width, height) = ui::map_size(size.width, size.height, app.panel_visible());
+        app.set_map_size(width, height);
         let now = Instant::now();
         if app.wants_source(now) {
             loader.load_source();
@@ -111,8 +131,11 @@ async fn event_loop(
         for id in app.tiles_to_load(now) {
             loader.load(id);
         }
+        for request in app.take_requests() {
+            services.send(request);
+        }
         if dirty {
-            terminal.draw(|frame| ui::draw(frame, app, palette))?;
+            terminal.draw(|frame| ui::draw(frame, app, palette, units))?;
         }
         let retry = app.next_retry();
         dirty = tokio::select! {

@@ -2,10 +2,12 @@
 
 pub mod config;
 pub mod error;
+pub mod format;
 pub mod geo;
 pub mod geocode;
 pub mod http;
 pub mod mvt;
+pub mod places;
 pub mod providers;
 pub mod render;
 pub mod routing;

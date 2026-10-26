@@ -7,6 +7,8 @@ use crate::tiles::TileId;
 pub const MAX_ZOOM: f64 = 18.0;
 /// Width of a tile in braille dots at its own zoom. Dots are about square in common terminal fonts.
 const TILE_DOTS: f64 = 256.0;
+/// The part of the screen that [`View::fitting`] fills, so that the points keep a margin.
+const FIT_FILL: f64 = 0.8;
 /// Web Mercator stops at this latitude, where the projected world is square.
 const MAX_LAT: f64 = 85.051_128_779_806_59;
 
@@ -136,6 +138,56 @@ impl View {
         self.pan(x - width / 2.0, y - height / 2.0).center()
     }
 
+    /// The position in dots of `point` on a screen of `width` × `height` dots. Of the copies of
+    /// the world, the point takes the one nearest to the center.
+    #[must_use]
+    pub fn screen_position(self, point: LatLon, width: f64, height: f64) -> (f64, f64) {
+        let (x, y) = project(point);
+        self.world_to_screen(nearest_copy(x, self.x), y, width, height)
+    }
+
+    /// The screen positions in dots of a line. Each point takes the world copy nearest to the
+    /// previous point, so a line across the antimeridian stays connected.
+    #[must_use]
+    pub fn line_on_screen(self, points: &[LatLon], width: f64, height: f64) -> Vec<(f64, f64)> {
+        unwrap(points, self.x)
+            .map(|(x, y)| self.world_to_screen(x, y, width, height))
+            .collect()
+    }
+
+    /// The view that shows all `points` with a margin on a screen of `width` × `height` dots,
+    /// or `None` without points.
+    #[must_use]
+    pub fn fitting(points: &[LatLon], width: f64, height: f64) -> Option<Self> {
+        let (first_x, _) = project(*points.first()?);
+        let (mut min_x, mut min_y) = (f64::INFINITY, f64::INFINITY);
+        let (mut max_x, mut max_y) = (f64::NEG_INFINITY, f64::NEG_INFINITY);
+        for (x, y) in unwrap(points, first_x) {
+            (min_x, max_x) = (min_x.min(x), max_x.max(x));
+            (min_y, max_y) = (min_y.min(y), max_y.max(y));
+        }
+        let zoom_for = |screen: f64, span: f64| (screen * FIT_FILL / (span * TILE_DOTS)).log2();
+        let zoom = zoom_for(width, max_x - min_x).min(zoom_for(height, max_y - min_y));
+        Some(Self {
+            x: f64::midpoint(min_x, max_x).rem_euclid(1.0),
+            y: f64::midpoint(min_y, max_y),
+            // NaN comes from one point on a screen of size 0.
+            zoom: if zoom.is_nan() {
+                MAX_ZOOM
+            } else {
+                zoom.clamp(0.0, MAX_ZOOM)
+            },
+        })
+    }
+
+    fn world_to_screen(self, x: f64, y: f64, width: f64, height: f64) -> (f64, f64) {
+        let scale = self.dots_per_world();
+        (
+            (x - self.x) * scale + width / 2.0,
+            (y - self.y) * scale + height / 2.0,
+        )
+    }
+
     fn dots_per_world(self) -> f64 {
         TILE_DOTS * self.zoom.exp2()
     }
@@ -152,6 +204,22 @@ fn project(point: LatLon) -> (f64, f64) {
     let x = (point.lon() + 180.0) / 360.0;
     let y = (1.0 - lat.tan().asinh() / PI) / 2.0;
     (x, y)
+}
+
+/// The world coordinates of `points`. Each `x` takes the world copy nearest to the previous one,
+/// and the first the copy nearest to `start_x`.
+fn unwrap(points: &[LatLon], start_x: f64) -> impl Iterator<Item = (f64, f64)> {
+    let mut previous = start_x;
+    points.iter().map(move |&point| {
+        let (x, y) = project(point);
+        previous = nearest_copy(x, previous);
+        (previous, y)
+    })
+}
+
+/// `x` moved by whole worlds to within half a world of `reference`.
+fn nearest_copy(x: f64, reference: f64) -> f64 {
+    x + (reference - x + 0.5).floor()
 }
 
 fn unproject(x: f64, y: f64) -> LatLon {
@@ -190,6 +258,40 @@ mod tests {
     fn pan_stops_at_the_projection_edge() {
         let view = View::new(milan(), 0.0).pan(0.0, -10_000.0);
         assert!((view.center().lat() - MAX_LAT).abs() < 1e-6);
+    }
+
+    #[test]
+    fn center_is_at_the_middle_of_the_screen() {
+        let position = View::new(milan(), 14.0).screen_position(milan(), 200.0, 100.0);
+        assert_eq!(position, (100.0, 50.0));
+    }
+
+    #[test]
+    fn line_across_the_antimeridian_stays_connected() {
+        let line = [
+            LatLon::new(-17.0, 179.9).unwrap(),
+            LatLon::new(-17.0, -179.9).unwrap(),
+        ];
+        let view = View::new(line[0], 10.0);
+        let points = view.line_on_screen(&line, 200.0, 100.0);
+        assert!((points[1].0 - points[0].0).abs() < 200.0);
+    }
+
+    #[test]
+    fn fitting_view_shows_every_point() {
+        let rome = LatLon::new(41.9028, 12.4964).unwrap();
+        let view = View::fitting(&[milan(), rome], 200.0, 100.0).unwrap();
+        let inside = [milan(), rome].map(|point| {
+            let (x, y) = view.screen_position(point, 200.0, 100.0);
+            (0.0..=200.0).contains(&x) && (0.0..=100.0).contains(&y)
+        });
+        assert_eq!(inside, [true, true]);
+    }
+
+    #[test]
+    fn fitting_one_point_uses_the_max_zoom() {
+        let view = View::fitting(&[milan()], 200.0, 100.0).unwrap();
+        assert_eq!(view.zoom(), MAX_ZOOM);
     }
 
     #[test]

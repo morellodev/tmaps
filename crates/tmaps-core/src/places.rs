@@ -4,10 +4,15 @@ use std::fs;
 use std::io::ErrorKind;
 use std::path::Path;
 
-use tmaps_core::{Error, LatLon, Result};
+use crate::{Error, LatLon, Result};
 use toml_edit::{DocumentMut, TableLike};
 
 /// Saves `location` as `name`, and replaces a place with the same name.
+///
+/// # Errors
+///
+/// - [`Error::InvalidInput`] if [`validate_name`] rejects `name`.
+/// - [`Error::Config`] if the config file cannot be read, parsed, or written.
 pub fn add(path: &Path, name: &str, location: LatLon) -> Result<()> {
     let name = validate_name(name)?;
     edit(path, |places| {
@@ -16,6 +21,10 @@ pub fn add(path: &Path, name: &str, location: LatLon) -> Result<()> {
     })
 }
 
+/// # Errors
+///
+/// - [`Error::InvalidInput`] if no place has the name.
+/// - [`Error::Config`] if the config file cannot be read, parsed, or written.
 pub fn remove(path: &Path, name: &str) -> Result<()> {
     let name = name.strip_prefix('@').unwrap_or(name);
     edit(path, |places| {
@@ -26,8 +35,13 @@ pub fn remove(path: &Path, name: &str) -> Result<()> {
     })
 }
 
-/// Accepts names that work as `@name` in a shell without quotes.
-fn validate_name(name: &str) -> Result<&str> {
+/// Accepts names that work as `@name` in a shell without quotes, and returns the name without
+/// the `@`.
+///
+/// # Errors
+///
+/// [`Error::InvalidInput`] for other names.
+pub fn validate_name(name: &str) -> Result<&str> {
     let name = name.strip_prefix('@').unwrap_or(name);
     let valid = !name.is_empty()
         && name

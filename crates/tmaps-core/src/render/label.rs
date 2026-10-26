@@ -164,7 +164,7 @@ fn normalize(point: crate::mvt::Point, extent: u32) -> [f32; 2] {
 }
 
 /// Adds the labels of the visible tiles to the canvas, in the order of [`LabelClass`]. A label
-/// that would cover another label, the cursor, or the canvas edge is left out. Each text
+/// that would cover another label, the cursor, a route, or the canvas edge is left out. Each text
 /// appears once, so a road that crosses tiles gets one label.
 pub(super) fn place<'a>(
     canvas: &mut Canvas,
@@ -204,9 +204,16 @@ pub(super) fn place<'a>(
             Anchor::Lines(lines) => line_spots(canvas, placement, lines, width),
         };
         let free = spots.into_iter().find(|spot| {
-            spot.start >= 0
-                && spot.end <= i32::from(canvas.width())
-                && (0..i32::from(canvas.height())).contains(&spot.row)
+            let (Ok(row), Ok(start), Ok(end)) = (
+                u16::try_from(spot.row),
+                u16::try_from(spot.start),
+                u16::try_from(spot.end),
+            ) else {
+                return false;
+            };
+            end <= canvas.width()
+                && row < canvas.height()
+                && !canvas.has_route(row, start..end)
                 && !taken.iter().any(|other| spot.padded().overlaps(other))
         });
         let Some(spot) = free else {
