@@ -1,0 +1,101 @@
+# tmaps plan
+
+`tmaps` is a terminal map viewer with a route planner, and a CLI for AI agents. It uses OpenStreetMap data.
+
+## Product
+
+- `tmaps` with no arguments opens the TUI. Subcommands (`geocode`, `reverse`, `route`, `eta`, `places`) are the CLI for agents.
+- Travel modes: car, bike, foot. Out of scope: public transit and live GPS guidance.
+- The itinerary is static. It shows 0 to 2 alternative routes.
+- No automatic location. The TUI opens at the last view, then `@home`, then a world view.
+- MIT license. Public open-source project.
+
+## Data providers
+
+The config file can change each endpoint. Providers are concrete types for now. Add a trait when a second adapter exists (a fake for TUI tests or a commercial provider): a seam with one adapter is only hypothetical.
+
+| Function | Default | Notes |
+| --- | --- | --- |
+| Vector tiles | OpenFreeMap | OpenMapTiles schema, z0–14. Overzoom to about z18. Read the dated tile URL from the TileJSON. |
+| Routing | Valhalla (`valhalla1.openstreetmap.de`) | Client throttle: max 1 req/s. Shape is polyline precision 6. Alternates can be 0. |
+| Geocoding | Photon (`photon.komoot.io`) | Search, autocomplete (300 ms debounce), reverse. `lang`: `default`, `de`, `en`, `fr` only. |
+
+- Do not use Nominatim. Its policy does not allow autocomplete.
+- Send a unique User-Agent: `tmaps/<version> (+<repo URL>)`.
+- Show attribution in the TUI status bar and in an `attribution` field of each JSON output.
+- The README tells heavy users to self-host.
+
+## Architecture
+
+- MSRV: Rust 1.96 (`std::assert_matches!`).
+- Cargo workspace:
+  - `tmaps-core`: providers, geo math, domain types, renderer.
+  - `tmaps-tui`: ratatui + crossterm UI.
+  - `tmaps`: the binary and the CLI (clap).
+- A tokio worker pool fetches, decodes, and projects tiles. Channels send results to the UI loop. The UI never blocks.
+- MVT decoding: `prost` with a vendored `vector_tile.proto` and `protox`.
+- The renderer has no ratatui dependency, so snapshot tests can use it. It simplifies geometry for each zoom, fills polygons with `earcutr`, draws braille, and places labels greedily with an `rstar` collision check.
+- Language and units come from the config file, then the system locale. With no usable locale (`C`, `POSIX`), the language is `en-US` and the units are metric.
+- XDG paths on all platforms (`etcetera`):
+  - config: `~/.config/tmaps/config.toml` (includes `[places]`)
+  - state: `~/.local/state/tmaps/` (last view)
+  - cache: `~/.cache/tmaps/` (500 MB LRU for tiles that obeys `Cache-Control`; geocode results for 24 h; no route cache)
+
+## TUI
+
+- The cursor is a fixed crosshair at the center. The map moves under it.
+- Keys:
+  - arrows or `hjkl`: pan. `Shift`: large pan step. Mouse drag: pan.
+  - `+`/`-` or mouse wheel: zoom.
+  - `/`: search, biased to the viewport center.
+  - `s`/`e`: set start/end. `x`: swap. `c`: clear.
+  - `1`/`2`/`3`: car/bike/foot.
+  - `Tab`: next alternative route.
+  - `p`: toggle the panel.
+  - `m`: save the cursor as a named place. `'`: jump to a place.
+  - `?`: help. `q`: quit.
+- The route request starts when both points are set or when the mode changes.
+- The itinerary panel is on the right. Below about 100 columns, it becomes a bottom drawer. It shows the mode, a summary for each alternative, and the steps. Select a step to center the map on it.
+- Colors: truecolor with a 256-color fallback. Dark and light themes, with auto-detection and dark as default. Obey `NO_COLOR`. The route uses a strong accent color. Alternatives are dimmed.
+- When the network fails, show cached tiles and an error in the status line. Route and search errors also go to the status line.
+
+## CLI
+
+- Location input: `lat,lon`, free text, or `@place`. For ambiguous text, use the top result and show the resolved point. `--strict` fails with exit code 2 and lists the candidates.
+- `route --from X --to Y [--mode car|bike|foot] [--alternatives N] [--depart-at T] [--geometry polyline6|geojson]`
+- `eta --from X --to Y`: duration and distance only.
+- `geocode <query> [--near <place>]`, `reverse <lat,lon>`, `places add|list|rm`.
+- Output: JSON when stdout is not a TTY, text when it is a TTY. `--format json|text` overrides.
+- JSON has versioned schemas (`"schema": "tmaps/route@1"`). Publish the JSON Schemas.
+- JSON uses SI units every time. `--units` and `--lang` change only the text output and the TUI.
+- Fields for each step: `instruction`, `maneuver`, `street_names`, `distance_m`, `duration_s`, `elapsed_s`, `location`.
+- Each point in JSON is an object: `{"lat": …, "lon": …}`. Only GeoJSON geometry uses `[lon, lat]`.
+- Route JSON includes `"traffic": "none"` and `"eta_basis": "free-flow"`.
+- `--depart-at` only calculates the arrival time in tmaps. It does not go to Valhalla, because time-dependent routes have no alternates.
+- Geometry is not in the output by default.
+- Errors go to stderr as JSON. Exit codes: 0 ok, 2 ambiguous or invalid input, 3 no route, 4 network or provider error.
+
+## Quality
+
+- `insta` snapshot tests of the renderer with fixture tiles in the repo.
+- `wiremock` tests for providers with recorded HTTP fixtures.
+- `assert_cmd` CLI tests that validate output against the JSON Schemas.
+- Contract tests against live endpoints in a nightly CI job only.
+
+## Release
+
+- `cargo-dist`: macOS (arm64, x86_64), Linux (x86_64, arm64), Windows (x86_64, best effort).
+- GitHub releases and a Homebrew tap.
+- `docs/agents.md` and `skills/tmaps/SKILL.md` ship in M1.
+
+## Milestones
+
+1. M0: workspace, config, providers (Photon, Valhalla), domain types.
+2. M1: CLI (`geocode`, `reverse`, `route`, `eta`, `places`), JSON Schemas, agent docs.
+3. M2: tile pipeline, braille renderer, pan and zoom.
+4. M3: labels and themes.
+5. M4: TUI search, point selection, routes, itinerary panel.
+6. M5: release packaging.
+7. v1.1: `tmaps mcp` (`rmcp`, stdio) and waypoints.
+
+Backlog: `nearby` (Overpass), `isochrone`, `matrix`, raster mode (Kitty/iTerm2/Sixel), offline regions (PMTiles + local Valhalla).

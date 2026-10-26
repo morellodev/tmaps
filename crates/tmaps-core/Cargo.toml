@@ -1,0 +1,27 @@
+[package]
+name = "tmaps-core"
+description = "Providers, geo types, and routing logic for tmaps"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+etcetera = "0.11"
+polyline = "0.11"
+reqwest = { version = "0.13", default-features = false, features = ["default-tls", "http2", "json", "query", "gzip", "system-proxy"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sys-locale = "0.3"
+thiserror = "2"
+tokio = { version = "1", features = ["sync", "time"] }
+toml = "1"
+
+[dev-dependencies]
+tempfile = "3.27.0"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync", "test-util", "time"] }
+wiremock = "0.6"
