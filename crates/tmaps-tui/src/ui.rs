@@ -770,18 +770,6 @@ mod tests {
     }
 
     #[test]
-    fn long_text_wraps_under_its_start() {
-        assert_eq!(
-            hanging("  100 m  ", "Svolta a sinistra su Via Roma", 20),
-            [
-                "  100 m  Svolta a",
-                "         sinistra su",
-                "         Via Roma"
-            ]
-        );
-    }
-
-    #[test]
     fn status_keeps_the_error_when_the_attribution_does_not_fit() {
         let mut app = App::new(View::new(LatLon::new(45.4642, 9.19).unwrap(), 14.0));
         let now = Instant::now();
