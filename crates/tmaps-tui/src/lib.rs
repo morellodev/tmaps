@@ -133,6 +133,7 @@ async fn event_loop(
         let size = terminal.size()?;
         let (width, height) = ui::map_size(size.width, size.height, app.panel_visible());
         app.set_map_size(width, height);
+        app.set_help_overflow(ui::help_overflow(size.width, size.height));
         let now = Instant::now();
         dirty |= app.expire(now);
         if app.wants_source(now) {

@@ -39,6 +39,10 @@ pub struct App {
     failed: HashMap<TileId, Instant>,
     error: Option<String>,
     help: bool,
+    /// The help rows above the visible part.
+    help_scroll: usize,
+    /// The help rows that do not fit on the screen.
+    help_overflow: usize,
     quit: bool,
     drag_from: Option<(u16, u16)>,
     trip: Trip,
@@ -84,6 +88,8 @@ impl App {
             failed: HashMap::new(),
             error: None,
             help: false,
+            help_scroll: 0,
+            help_overflow: 0,
             quit: false,
             drag_from: None,
             trip: Trip::default(),
@@ -114,6 +120,19 @@ impl App {
 
     pub fn help(&self) -> bool {
         self.help
+    }
+
+    pub fn help_scroll(&self) -> usize {
+        self.help_scroll
+    }
+
+    pub fn help_overflow(&self) -> usize {
+        self.help_overflow
+    }
+
+    pub fn set_help_overflow(&mut self, rows: usize) {
+        self.help_overflow = rows;
+        self.help_scroll = self.help_scroll.min(rows);
     }
 
     pub fn should_quit(&self) -> bool {
@@ -380,8 +399,17 @@ impl App {
                 return false;
             }
             KeyCode::Char('q') => self.quit = true,
-            KeyCode::Char('?') => self.help = !self.help,
+            KeyCode::Char('?') => {
+                self.help = !self.help;
+                self.help_scroll = 0;
+            }
             KeyCode::Esc => self.help = false,
+            KeyCode::Up | KeyCode::Char('k') if self.help && self.help_overflow > 0 => {
+                self.help_scroll = self.help_scroll.saturating_sub(1);
+            }
+            KeyCode::Down | KeyCode::Char('j') if self.help && self.help_overflow > 0 => {
+                self.help_scroll = (self.help_scroll + 1).min(self.help_overflow);
+            }
             KeyCode::Left | KeyCode::Char('h') => self.pan_screens(-step, 0.0),
             KeyCode::Right | KeyCode::Char('l') => self.pan_screens(step, 0.0),
             KeyCode::Up | KeyCode::Char('k') => self.pan_screens(0.0, -step),
@@ -930,6 +958,36 @@ mod tests {
         );
         key(&mut app, KeyCode::Right);
         assert_eq!(app.status(), None);
+    }
+
+    #[test]
+    fn arrows_scroll_the_help_up_to_its_end() {
+        let mut app = ready_app();
+        app.set_help_overflow(2);
+        key(&mut app, KeyCode::Char('?'));
+        for _ in 0..4 {
+            key(&mut app, KeyCode::Down);
+        }
+        assert_eq!(app.help_scroll(), 2);
+    }
+
+    #[test]
+    fn help_opens_at_its_top() {
+        let mut app = ready_app();
+        app.set_help_overflow(2);
+        key(&mut app, KeyCode::Char('?'));
+        key(&mut app, KeyCode::Down);
+        key(&mut app, KeyCode::Char('?'));
+        key(&mut app, KeyCode::Char('?'));
+        assert_eq!(app.help_scroll(), 0);
+    }
+
+    #[test]
+    fn arrows_pan_under_a_help_that_fits() {
+        let mut app = ready_app();
+        key(&mut app, KeyCode::Char('?'));
+        key(&mut app, KeyCode::Down);
+        assert_ne!(app.view(), View::new(milan(), 14.0));
     }
 
     #[test]
