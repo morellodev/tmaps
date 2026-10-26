@@ -1,0 +1,86 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ReverseDoc",
+  "type": "object",
+  "properties": {
+    "attribution": {
+      "type": "string"
+    },
+    "location": {
+      "$ref": "#/$defs/LatLon"
+    },
+    "place": {
+      "description": "Null when the geocoder knows no place near `location`.",
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Place"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "schema": {
+      "type": "string",
+      "const": "tmaps/reverse@1"
+    }
+  },
+  "required": [
+    "schema",
+    "attribution",
+    "location"
+  ],
+  "$defs": {
+    "LatLon": {
+      "type": "object",
+      "properties": {
+        "lat": {
+          "type": "number",
+          "format": "double"
+        },
+        "lon": {
+          "type": "number",
+          "format": "double"
+        }
+      },
+      "required": [
+        "lat",
+        "lon"
+      ]
+    },
+    "Place": {
+      "type": "object",
+      "properties": {
+        "category": {
+          "description": "OSM `key:value` tag, for example `railway:station`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "country_code": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "label": {
+          "type": "string"
+        },
+        "location": {
+          "$ref": "#/$defs/LatLon"
+        },
+        "name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "label",
+        "location"
+      ]
+    }
+  }
+}

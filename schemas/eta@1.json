@@ -1,0 +1,112 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "EtaDoc",
+  "type": "object",
+  "properties": {
+    "arrive_at": {
+      "$ref": "#/$defs/DateTime"
+    },
+    "attribution": {
+      "type": "string"
+    },
+    "depart_at": {
+      "$ref": "#/$defs/DateTime"
+    },
+    "distance_m": {
+      "type": "number",
+      "format": "double"
+    },
+    "duration_s": {
+      "type": "number",
+      "format": "double"
+    },
+    "eta_basis": {
+      "type": "string",
+      "const": "free-flow"
+    },
+    "from": {
+      "$ref": "#/$defs/Resolved"
+    },
+    "mode": {
+      "$ref": "#/$defs/Mode"
+    },
+    "schema": {
+      "type": "string",
+      "const": "tmaps/eta@1"
+    },
+    "to": {
+      "$ref": "#/$defs/Resolved"
+    },
+    "traffic": {
+      "type": "string",
+      "const": "none"
+    }
+  },
+  "required": [
+    "schema",
+    "attribution",
+    "mode",
+    "from",
+    "to",
+    "traffic",
+    "eta_basis",
+    "depart_at",
+    "arrive_at",
+    "distance_m",
+    "duration_s"
+  ],
+  "$defs": {
+    "DateTime": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "LatLon": {
+      "type": "object",
+      "properties": {
+        "lat": {
+          "type": "number",
+          "format": "double"
+        },
+        "lon": {
+          "type": "number",
+          "format": "double"
+        }
+      },
+      "required": [
+        "lat",
+        "lon"
+      ]
+    },
+    "Mode": {
+      "type": "string",
+      "enum": [
+        "car",
+        "bike",
+        "foot"
+      ]
+    },
+    "Resolved": {
+      "description": "A LOCATION argument and the point it resolved to.",
+      "type": "object",
+      "properties": {
+        "input": {
+          "type": "string"
+        },
+        "label": {
+          "description": "Geocoder label for free text, `@name` for a saved place, null for coordinates.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "location": {
+          "$ref": "#/$defs/LatLon"
+        }
+      },
+      "required": [
+        "input",
+        "location"
+      ]
+    }
+  }
+}

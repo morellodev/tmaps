@@ -1,0 +1,82 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "GeocodeDoc",
+  "type": "object",
+  "properties": {
+    "attribution": {
+      "type": "string"
+    },
+    "places": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/Place"
+      }
+    },
+    "query": {
+      "type": "string"
+    },
+    "schema": {
+      "type": "string",
+      "const": "tmaps/geocode@1"
+    }
+  },
+  "required": [
+    "schema",
+    "attribution",
+    "query",
+    "places"
+  ],
+  "$defs": {
+    "LatLon": {
+      "type": "object",
+      "properties": {
+        "lat": {
+          "type": "number",
+          "format": "double"
+        },
+        "lon": {
+          "type": "number",
+          "format": "double"
+        }
+      },
+      "required": [
+        "lat",
+        "lon"
+      ]
+    },
+    "Place": {
+      "type": "object",
+      "properties": {
+        "category": {
+          "description": "OSM `key:value` tag, for example `railway:station`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "country_code": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "label": {
+          "type": "string"
+        },
+        "location": {
+          "$ref": "#/$defs/LatLon"
+        },
+        "name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "label",
+        "location"
+      ]
+    }
+  }
+}

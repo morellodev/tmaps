@@ -1,0 +1,267 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "RouteDoc",
+  "type": "object",
+  "properties": {
+    "attribution": {
+      "type": "string"
+    },
+    "depart_at": {
+      "$ref": "#/$defs/DateTime"
+    },
+    "eta_basis": {
+      "type": "string",
+      "const": "free-flow"
+    },
+    "from": {
+      "$ref": "#/$defs/Resolved"
+    },
+    "mode": {
+      "$ref": "#/$defs/Mode"
+    },
+    "routes": {
+      "description": "The best route first, then the alternatives.",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/RouteItem"
+      }
+    },
+    "schema": {
+      "type": "string",
+      "const": "tmaps/route@1"
+    },
+    "to": {
+      "$ref": "#/$defs/Resolved"
+    },
+    "traffic": {
+      "type": "string",
+      "const": "none"
+    }
+  },
+  "required": [
+    "schema",
+    "attribution",
+    "mode",
+    "from",
+    "to",
+    "traffic",
+    "eta_basis",
+    "depart_at",
+    "routes"
+  ],
+  "$defs": {
+    "DateTime": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "Geometry": {
+      "anyOf": [
+        {
+          "description": "Encoded polyline with precision 6.",
+          "type": "string"
+        },
+        {
+          "$ref": "#/$defs/LineString"
+        }
+      ]
+    },
+    "LatLon": {
+      "type": "object",
+      "properties": {
+        "lat": {
+          "type": "number",
+          "format": "double"
+        },
+        "lon": {
+          "type": "number",
+          "format": "double"
+        }
+      },
+      "required": [
+        "lat",
+        "lon"
+      ]
+    },
+    "LineString": {
+      "description": "`GeoJSON` `LineString`, with `[lon, lat]` positions.",
+      "type": "object",
+      "properties": {
+        "coordinates": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "number",
+              "format": "double"
+            },
+            "maxItems": 2,
+            "minItems": 2
+          }
+        },
+        "type": {
+          "type": "string",
+          "const": "LineString"
+        }
+      },
+      "required": [
+        "type",
+        "coordinates"
+      ]
+    },
+    "Maneuver": {
+      "type": "string",
+      "enum": [
+        "depart",
+        "arrive",
+        "continue",
+        "turn_slight_right",
+        "turn_right",
+        "turn_sharp_right",
+        "uturn_right",
+        "uturn_left",
+        "turn_sharp_left",
+        "turn_left",
+        "turn_slight_left",
+        "ramp_straight",
+        "ramp_right",
+        "ramp_left",
+        "exit_right",
+        "exit_left",
+        "keep_straight",
+        "keep_right",
+        "keep_left",
+        "merge",
+        "merge_right",
+        "merge_left",
+        "roundabout_enter",
+        "roundabout_exit",
+        "ferry_enter",
+        "ferry_exit",
+        "other"
+      ]
+    },
+    "Mode": {
+      "type": "string",
+      "enum": [
+        "car",
+        "bike",
+        "foot"
+      ]
+    },
+    "Resolved": {
+      "description": "A LOCATION argument and the point it resolved to.",
+      "type": "object",
+      "properties": {
+        "input": {
+          "type": "string"
+        },
+        "label": {
+          "description": "Geocoder label for free text, `@name` for a saved place, null for coordinates.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "location": {
+          "$ref": "#/$defs/LatLon"
+        }
+      },
+      "required": [
+        "input",
+        "location"
+      ]
+    },
+    "RouteItem": {
+      "type": "object",
+      "properties": {
+        "arrive_at": {
+          "$ref": "#/$defs/DateTime"
+        },
+        "distance_m": {
+          "type": "number",
+          "format": "double"
+        },
+        "duration_s": {
+          "type": "number",
+          "format": "double"
+        },
+        "geometry": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Geometry"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "has_ferry": {
+          "type": "boolean"
+        },
+        "has_highway": {
+          "type": "boolean"
+        },
+        "has_toll": {
+          "type": "boolean"
+        },
+        "steps": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Step"
+          }
+        }
+      },
+      "required": [
+        "distance_m",
+        "duration_s",
+        "has_toll",
+        "has_highway",
+        "has_ferry",
+        "steps",
+        "arrive_at"
+      ]
+    },
+    "Step": {
+      "type": "object",
+      "properties": {
+        "distance_m": {
+          "type": "number",
+          "format": "double"
+        },
+        "duration_s": {
+          "type": "number",
+          "format": "double"
+        },
+        "elapsed_s": {
+          "description": "Time from departure to the start of this step.",
+          "type": "number",
+          "format": "double"
+        },
+        "instruction": {
+          "type": "string"
+        },
+        "location": {
+          "$ref": "#/$defs/LatLon"
+        },
+        "maneuver": {
+          "$ref": "#/$defs/Maneuver"
+        },
+        "street_names": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "instruction",
+        "maneuver",
+        "street_names",
+        "distance_m",
+        "duration_s",
+        "elapsed_s",
+        "location"
+      ]
+    }
+  }
+}

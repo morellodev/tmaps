@@ -1,11 +1,12 @@
 use std::fmt;
 use std::str::FromStr;
 
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::{Error, LatLon, Result};
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum Mode {
     #[default]
@@ -50,7 +51,7 @@ pub struct RouteRequest {
     pub lang: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, JsonSchema)]
 pub struct Route {
     pub distance_m: f64,
     pub duration_s: f64,
@@ -62,7 +63,7 @@ pub struct Route {
     pub geometry: Vec<LatLon>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, JsonSchema)]
 pub struct Step {
     pub instruction: String,
     pub maneuver: Maneuver,
@@ -74,7 +75,7 @@ pub struct Step {
     pub location: LatLon,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum Maneuver {
     Depart,

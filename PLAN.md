@@ -39,7 +39,7 @@ The config file can change each endpoint. Providers are concrete types for now. 
 - XDG paths on all platforms (`etcetera`):
   - config: `~/.config/tmaps/config.toml` (includes `[places]`)
   - state: `~/.local/state/tmaps/` (last view)
-  - cache: `~/.cache/tmaps/` (500 MB LRU for tiles that obeys `Cache-Control`; geocode results for 24 h; no route cache)
+  - cache: `~/.cache/tmaps/` (500 MB LRU for tiles that obeys `Cache-Control`; geocode results for 24 h from M4, for autocomplete; no route cache)
 
 ## TUI
 
@@ -61,19 +61,21 @@ The config file can change each endpoint. Providers are concrete types for now. 
 
 ## CLI
 
-- Location input: `lat,lon`, free text, or `@place`. For ambiguous text, use the top result and show the resolved point. `--strict` fails with exit code 2 and lists the candidates.
+- Location input: `lat,lon`, free text, or `@place`. For ambiguous text, use the top result and show the resolved point. `--strict` fails with exit code 2 and lists the candidates when a match is more than 1 km from the top result.
 - `route --from X --to Y [--mode car|bike|foot] [--alternatives N] [--depart-at T] [--geometry polyline6|geojson]`
 - `eta --from X --to Y`: duration and distance only.
 - `geocode <query> [--near <place>]`, `reverse <lat,lon>`, `places add|list|rm`.
 - Output: JSON when stdout is not a TTY, text when it is a TTY. `--format json|text` overrides.
 - JSON has versioned schemas (`"schema": "tmaps/route@1"`). Publish the JSON Schemas.
-- JSON uses SI units every time. `--units` and `--lang` change only the text output and the TUI.
+- JSON uses SI units every time. `--units` changes only the text output and the TUI. `--lang` sets the language of names and instructions in both formats, because the providers write that text.
 - Fields for each step: `instruction`, `maneuver`, `street_names`, `distance_m`, `duration_s`, `elapsed_s`, `location`.
 - Each point in JSON is an object: `{"lat": …, "lon": …}`. Only GeoJSON geometry uses `[lon, lat]`.
 - Route JSON includes `"traffic": "none"` and `"eta_basis": "free-flow"`.
 - `--depart-at` only calculates the arrival time in tmaps. It does not go to Valhalla, because time-dependent routes have no alternates.
 - Geometry is not in the output by default.
-- Errors go to stderr as JSON. Exit codes: 0 ok, 2 ambiguous or invalid input, 3 no route, 4 network or provider error.
+- Errors go to stderr in the output format. Usage errors are JSON when stdout is not a terminal. Exit codes: 0 ok, 1 config or output error, 2 ambiguous or invalid input, 3 no route, 4 network or provider error.
+- `--depart-at` accepts RFC 3339, `YYYY-MM-DDTHH:MM`, or `HH:MM` in the local time zone. The default is now.
+- schemars generates the JSON Schemas from the output types into `schemas/`. A test fails when a stored schema is stale.
 
 ## Quality
 

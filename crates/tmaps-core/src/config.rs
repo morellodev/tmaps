@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
+use std::str::FromStr;
 
 use etcetera::BaseStrategy;
 use serde::{Deserialize, Serialize};
@@ -21,6 +22,20 @@ pub const DEFAULT_PHOTON_URL: &str = "https://photon.komoot.io";
 pub enum Units {
     Metric,
     Imperial,
+}
+
+impl FromStr for Units {
+    type Err = Error;
+
+    fn from_str(s: &str) -> Result<Self> {
+        match s {
+            "metric" => Ok(Self::Metric),
+            "imperial" => Ok(Self::Imperial),
+            _ => Err(Error::InvalidInput(format!(
+                "unknown units {s:?}, expected metric or imperial"
+            ))),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -115,7 +130,8 @@ fn config_error(path: &Path, message: String) -> Error {
 }
 
 /// Turns POSIX locales such as `en_US.UTF-8` into BCP 47 tags with canonical case, such as `en-US`.
-fn normalize_locale(locale: &str) -> Option<String> {
+#[must_use]
+pub fn normalize_locale(locale: &str) -> Option<String> {
     let tag = locale.split(['.', '@']).next()?;
     if tag.is_empty() || tag == "C" || tag == "POSIX" {
         return None;

@@ -9,4 +9,7 @@ pub mod providers;
 pub mod routing;
 
 pub use error::{Error, Result};
+
+/// Credit line that every view of provider data must show.
+pub const ATTRIBUTION: &str = "© OpenStreetMap contributors";
 pub use geo::LatLon;

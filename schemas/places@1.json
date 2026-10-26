@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "PlacesDoc",
+  "type": "object",
+  "properties": {
+    "attribution": {
+      "type": "string"
+    },
+    "places": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/SavedPlace"
+      }
+    },
+    "schema": {
+      "type": "string",
+      "const": "tmaps/places@1"
+    }
+  },
+  "required": [
+    "schema",
+    "attribution",
+    "places"
+  ],
+  "$defs": {
+    "LatLon": {
+      "type": "object",
+      "properties": {
+        "lat": {
+          "type": "number",
+          "format": "double"
+        },
+        "lon": {
+          "type": "number",
+          "format": "double"
+        }
+      },
+      "required": [
+        "lat",
+        "lon"
+      ]
+    },
+    "SavedPlace": {
+      "type": "object",
+      "properties": {
+        "location": {
+          "$ref": "#/$defs/LatLon"
+        },
+        "name": {
+          "description": "Use as `@name` in a LOCATION argument.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "location"
+      ]
+    }
+  }
+}

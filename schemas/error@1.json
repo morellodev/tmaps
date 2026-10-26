@@ -1,0 +1,106 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ErrorDoc",
+  "type": "object",
+  "properties": {
+    "error": {
+      "$ref": "#/$defs/ErrorBody"
+    },
+    "schema": {
+      "type": "string",
+      "const": "tmaps/error@1"
+    }
+  },
+  "required": [
+    "schema",
+    "error"
+  ],
+  "$defs": {
+    "ErrorBody": {
+      "type": "object",
+      "properties": {
+        "candidates": {
+          "description": "The matches of an `ambiguous` LOCATION.",
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "$ref": "#/$defs/Place"
+          }
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "invalid_input",
+            "ambiguous",
+            "usage",
+            "no_route",
+            "network",
+            "provider",
+            "config",
+            "output"
+          ]
+        },
+        "message": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "message"
+      ]
+    },
+    "LatLon": {
+      "type": "object",
+      "properties": {
+        "lat": {
+          "type": "number",
+          "format": "double"
+        },
+        "lon": {
+          "type": "number",
+          "format": "double"
+        }
+      },
+      "required": [
+        "lat",
+        "lon"
+      ]
+    },
+    "Place": {
+      "type": "object",
+      "properties": {
+        "category": {
+          "description": "OSM `key:value` tag, for example `railway:station`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "country_code": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "label": {
+          "type": "string"
+        },
+        "location": {
+          "$ref": "#/$defs/LatLon"
+        },
+        "name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "label",
+        "location"
+      ]
+    }
+  }
+}
