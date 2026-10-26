@@ -215,28 +215,42 @@ fn draw_panel(frame: &mut Frame, trip: &Trip, palette: Palette, units: Units, ar
     frame.render_widget(Clear, area);
     frame.render_widget(block, area);
 
-    let mut summary = vec![
-        mode_line(trip.mode()),
-        Line::default(),
-        waypoint_line('A', trip.start(), "s: start at +", palette),
-        waypoint_line('B', trip.end(), "e: end at +", palette),
-        Line::default(),
-    ];
+    // A drawer is wide and short, so the steps go next to the summary.
+    let side_by_side = inner.width >= 2 * SUMMARY_WIDTH;
+    let width = if side_by_side {
+        SUMMARY_WIDTH
+    } else {
+        inner.width
+    };
+    let mut summary = vec![mode_line(trip.mode()), Line::default()];
+    summary.extend(waypoint_lines(
+        'A',
+        trip.start(),
+        "s: start at +",
+        palette,
+        width,
+    ));
+    summary.extend(waypoint_lines(
+        'B',
+        trip.end(),
+        "e: end at +",
+        palette,
+        width,
+    ));
+    summary.push(Line::default());
     match trip.routes() {
         Routes::None => {}
         Routes::Loading => summary.push(Line::from("Searching for routes…")),
-        Routes::Failed(error) => summary.push(Line::from(error.as_str())),
+        Routes::Failed(error) => {
+            summary.extend(hanging("", error, width).into_iter().map(Line::from));
+        }
         Routes::Ready {
             routes, selected, ..
-        } => summary.extend(
-            routes
-                .iter()
-                .enumerate()
-                .map(|(index, route)| summary_line(index, route, index == *selected, units)),
-        ),
+        } => summary.extend(routes.iter().enumerate().flat_map(|(index, route)| {
+            summary_lines(index, route, index == *selected, units, width)
+        })),
     }
-    // A drawer is wide and short, so the steps go next to the summary.
-    let [summary_area, steps_area] = if inner.width >= 2 * SUMMARY_WIDTH {
+    let [summary_area, steps_area] = if side_by_side {
         inner.layout(&Layout::horizontal([
             Constraint::Length(SUMMARY_WIDTH),
             Constraint::Fill(1),
@@ -253,7 +267,7 @@ fn draw_panel(frame: &mut Frame, trip: &Trip, palette: Palette, units: Units, ar
         let steps: Vec<ListItem> = route
             .steps
             .iter()
-            .map(|step| ListItem::new(step_line(step, units)))
+            .map(|step| ListItem::new(step_lines(step, units, steps_area.width).join("\n")))
             .collect();
         let mut state = ListState::default().with_selected(step);
         frame.render_stateful_widget(
@@ -282,30 +296,49 @@ fn mode_line(mode: Mode) -> Line<'static> {
     Line::from_iter(spans)
 }
 
-fn waypoint_line(
+fn waypoint_lines(
     symbol: char,
     waypoint: Option<&Waypoint>,
     hint: &'static str,
     palette: Palette,
-) -> Line<'static> {
+    width: u16,
+) -> Vec<Line<'static>> {
     let text = match waypoint {
         Some(Waypoint {
             name: Some(name), ..
         }) => name.clone(),
-        Some(waypoint) => waypoint.location.to_string(),
+        Some(waypoint) => coordinates(waypoint.location),
         None => hint.to_owned(),
     };
-    Line::from_iter([
-        Span::styled(symbol.to_string(), palette.marker()),
-        Span::raw(format!(" {text}")),
-    ])
+    let mut lines: Vec<Line> = hanging(&format!("{symbol} "), &text, width)
+        .into_iter()
+        .map(Line::from)
+        .collect();
+    if let Some(first) = lines.first_mut() {
+        let rest = first.to_string().split_off(symbol.len_utf8());
+        *first = Line::from_iter([
+            Span::styled(symbol.to_string(), palette.marker()),
+            Span::raw(rest),
+        ]);
+    }
+    lines
 }
 
-fn summary_line(index: usize, route: &Route, selected: bool, units: Units) -> Line<'static> {
+/// 5 decimals, about 1 m, as in the status line.
+fn coordinates(location: LatLon) -> String {
+    format!("{:.5}, {:.5}", location.lat(), location.lon())
+}
+
+fn summary_lines(
+    index: usize,
+    route: &Route,
+    selected: bool,
+    units: Units,
+    width: u16,
+) -> Vec<Line<'static>> {
+    let prefix = format!("{} {}. ", if selected { '▶' } else { ' ' }, index + 1);
     let mut text = format!(
-        "{} {}. {} · {}",
-        if selected { '▶' } else { ' ' },
-        index + 1,
+        "{} · {}",
         duration(route.duration_s),
         distance(route.distance_m, units)
     );
@@ -323,17 +356,38 @@ fn summary_line(index: usize, route: &Route, selected: bool, units: Units) -> Li
     } else {
         Style::new()
     };
-    Line::styled(text, style)
+    hanging(&prefix, &text, width)
+        .into_iter()
+        .map(|line| Line::styled(line, style))
+        .collect()
 }
 
-/// The distance first, in a column: a long instruction loses its end at the panel edge.
-fn step_line(step: &Step, units: Units) -> String {
+/// The distance first, in a column, and the instruction to its right.
+fn step_lines(step: &Step, units: Units, width: u16) -> Vec<String> {
     let distance = if step.distance_m > 0.0 {
         distance(step.distance_m, units)
     } else {
         String::new()
     };
-    format!("{distance:>7}  {}", step.instruction)
+    hanging(&format!("{distance:>7}  "), &step.instruction, width)
+}
+
+/// Wraps `text` after `prefix` to `width` columns. The next lines start under the text, so the
+/// column of the prefix stays clear.
+fn hanging(prefix: &str, text: &str, width: u16) -> Vec<String> {
+    let indent = Line::from(prefix).width();
+    let text_width = usize::from(width).saturating_sub(indent).max(1);
+    textwrap::wrap(text, text_width)
+        .into_iter()
+        .enumerate()
+        .map(|(index, line)| {
+            if index == 0 {
+                format!("{prefix}{line}")
+            } else {
+                format!("{:indent$}{line}", "")
+            }
+        })
+        .collect()
 }
 
 fn draw_status(frame: &mut Frame, app: &App, palette: Palette, area: Rect) {
@@ -530,6 +584,18 @@ mod tests {
             KeyModifiers::NONE,
         )));
         assert!(screen(80, 24, &app).contains("Ctrl-C"));
+    }
+
+    #[test]
+    fn long_text_wraps_under_its_start() {
+        assert_eq!(
+            hanging("  100 m  ", "Svolta a sinistra su Via Roma", 20),
+            [
+                "  100 m  Svolta a",
+                "         sinistra su",
+                "         Via Roma"
+            ]
+        );
     }
 
     #[test]

@@ -13,6 +13,7 @@ lru = "0.19"
 ratatui = "0.30"
 serde = { version = "1", features = ["derive"] }
 terminal-colorsaurus = "1"
+textwrap = "0.16"
 thiserror = "2"
 tmaps-core = { version = "0.1.0", path = "../tmaps-core" }
 tokio = { version = "1", features = ["macros", "rt", "sync", "time"] }
