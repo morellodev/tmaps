@@ -18,9 +18,44 @@ pub struct PreparedTile {
 #[derive(Debug, Clone, PartialEq)]
 struct Shape {
     min_zoom: f64,
-    /// Rings of an area, or lines. Points are fractions of the tile width, so they do not
-    /// depend on the tile extent.
-    parts: Vec<Vec<[f32; 2]>>,
+    /// Rings of an area, or lines.
+    parts: Vec<Part>,
+}
+
+/// Points are fractions of the tile width, so they do not depend on the tile extent.
+#[derive(Debug, Clone, PartialEq)]
+pub(super) struct Part {
+    pub(super) points: Vec<[f32; 2]>,
+    /// The top-left and bottom-right corners of the box around the points.
+    corners: [[f32; 2]; 2],
+}
+
+impl Part {
+    pub(super) fn new(points: Vec<[f32; 2]>) -> Self {
+        let corners = points.iter().fold(
+            [[f32::INFINITY; 2], [f32::NEG_INFINITY; 2]],
+            |[low, high], &[x, y]| {
+                [
+                    [low[0].min(x), low[1].min(y)],
+                    [high[0].max(x), high[1].max(y)],
+                ]
+            },
+        );
+        Self { points, corners }
+    }
+
+    /// Whether the part can draw in the bounds. A ring outside them adds an even number of
+    /// crossings to each row on one side of the bounds, so the fill inside does not change.
+    pub(super) fn touches(&self, placement: &VisibleTile, bounds: Bounds) -> bool {
+        // `clip` can round a point a few ulps outside the bounds onto the edge and draw it.
+        const SLACK: f64 = 1.0;
+        let (left, top) = to_dots(placement, self.corners[0]);
+        let (right, bottom) = to_dots(placement, self.corners[1]);
+        left <= bounds.right + SLACK
+            && right >= bounds.left - SLACK
+            && top <= bounds.bottom + SLACK
+            && bottom >= bounds.top - SLACK
+    }
 }
 
 pub(super) type DotPoint = (f64, f64);
@@ -100,9 +135,11 @@ impl PreparedTile {
                 let parts = parts
                     .iter()
                     .map(|part| {
-                        part.iter()
-                            .map(|point| [point.x as f32 / extent, point.y as f32 / extent])
-                            .collect()
+                        Part::new(
+                            part.iter()
+                                .map(|point| [point.x as f32 / extent, point.y as f32 / extent])
+                                .collect(),
+                        )
                     })
                     .collect();
                 prepared.shapes[style.class.index()].push(Shape {
@@ -157,6 +194,7 @@ pub fn render<'a>(
             })
         })
         .collect();
+    let mut crossings = Vec::new();
     // Class by class over all tiles, so that a tile does not cover the lines of its neighbor.
     for class in Class::ALL {
         for drawn in &visible {
@@ -164,19 +202,19 @@ pub fn render<'a>(
                 if view.zoom() < shape.min_zoom {
                     continue;
                 }
-                let parts: Vec<Vec<DotPoint>> = shape
+                let parts = shape
                     .parts
                     .iter()
+                    .filter(|part| part.touches(&drawn.placement, drawn.bounds))
                     .map(|part| {
-                        part.iter()
+                        part.points
+                            .iter()
                             .map(|&point| to_dots(&drawn.placement, point))
-                            .collect()
-                    })
-                    .collect();
+                    });
                 if class.is_area() {
-                    fill_rings(&mut canvas, &parts, class, drawn.bounds);
+                    fill_rings(&mut canvas, parts, class, drawn.bounds, &mut crossings);
                 } else {
-                    for part in &parts {
+                    for part in parts {
                         draw_line(&mut canvas, part, class, drawn.bounds);
                     }
                 }
@@ -192,7 +230,7 @@ pub fn render<'a>(
                 Class::Alternative
             };
             let points = view.line_on_screen(route.points, width_dots, height_dots);
-            draw_line(&mut canvas, &points, class, canvas_bounds);
+            draw_line(&mut canvas, points, class, canvas_bounds);
         }
     }
     label::place(
@@ -233,34 +271,54 @@ pub(super) fn to_dots(placement: &VisibleTile, [x, y]: [f32; 2]) -> DotPoint {
 }
 
 /// Fills each cell whose center is inside the rings and the bounds, by the even-odd rule.
-fn fill_rings(canvas: &mut Canvas, rings: &[Vec<DotPoint>], class: Class, bounds: Bounds) {
+/// `crossings` is scratch space, kept by the caller to reuse its allocation.
+///
+/// Each edge adds its crossings with the rows of cell centers that it spans, so the time is
+/// linear in edges plus crossings. Testing every edge on every row is slow for the merged
+/// multipolygons of tiles, which can have thousands of rings.
+fn fill_rings(
+    canvas: &mut Canvas,
+    rings: impl IntoIterator<Item = impl IntoIterator<Item = DotPoint>>,
+    class: Class,
+    bounds: Bounds,
+    crossings: &mut Vec<(u16, f64)>,
+) {
     let cell_w = f64::from(DOTS_PER_CELL_X);
     let cell_h = f64::from(DOTS_PER_CELL_Y);
-    let (min_y, max_y) = rings.iter().flatten().fold(
-        (f64::INFINITY, f64::NEG_INFINITY),
-        |(low, high), &(_, y)| (low.min(y), high.max(y)),
-    );
-    let first_row = (min_y.max(bounds.top) / cell_h - 0.5).ceil();
-    let last_row = (max_y / cell_h - 0.5)
-        .floor()
-        .min((bounds.bottom / cell_h - 0.5).ceil() - 1.0);
-    let mut crossings = Vec::new();
-    let mut row = first_row;
-    while row <= last_row {
-        let y = (row + 0.5) * cell_h;
-        crossings.clear();
-        for ring in rings {
-            for edge in ring.windows(2) {
-                let ((x0, y0), (x1, y1)) = (edge[0], edge[1]);
-                if (y0 <= y) != (y1 <= y) {
-                    crossings.push(x0 + (y - y0) / (y1 - y0) * (x1 - x0));
-                }
+    let first_row = (bounds.top / cell_h - 0.5).ceil().max(0.0);
+    let end_row = (bounds.bottom / cell_h - 0.5)
+        .ceil()
+        .min(f64::from(canvas.height()));
+    crossings.clear();
+    for ring in rings {
+        let mut points = ring.into_iter();
+        let Some(mut start) = points.next() else {
+            continue;
+        };
+        for end in points {
+            let ((x0, y0), (x1, y1)) = (start, end);
+            start = end;
+            // A row crosses the edge when one end is at or above its center and the other below.
+            let mut row = (y0.min(y1) / cell_h - 0.5).ceil().max(first_row);
+            let end_of_edge = (y0.max(y1) / cell_h - 0.5).ceil().min(end_row);
+            while row < end_of_edge {
+                let y = (row + 0.5) * cell_h;
+                #[expect(
+                    clippy::cast_possible_truncation,
+                    clippy::cast_sign_loss,
+                    reason = "clamped to the canvas"
+                )]
+                crossings.push((row as u16, x0 + (y - y0) / (y1 - y0) * (x1 - x0)));
+                row += 1.0;
             }
         }
-        crossings.sort_by(f64::total_cmp);
-        for span in crossings.as_chunks::<2>().0 {
-            let first_column = (span[0].max(bounds.left) / cell_w - 0.5).ceil();
-            let last_column = (span[1].min(bounds.right) / cell_w - 0.5).ceil();
+    }
+    crossings.sort_unstable_by(|a, b| a.0.cmp(&b.0).then(a.1.total_cmp(&b.1)));
+    for row_crossings in crossings.chunk_by(|a, b| a.0 == b.0) {
+        for span in row_crossings.as_chunks::<2>().0 {
+            let ((row, start), (_, end)) = (span[0], span[1]);
+            let first_column = (start.max(bounds.left) / cell_w - 0.5).ceil();
+            let last_column = (end.min(bounds.right) / cell_w - 0.5).ceil();
             let mut column = first_column;
             while column < last_column {
                 #[expect(
@@ -268,17 +326,27 @@ fn fill_rings(canvas: &mut Canvas, rings: &[Vec<DotPoint>], class: Class, bounds
                     clippy::cast_sign_loss,
                     reason = "clamped to the canvas"
                 )]
-                canvas.fill(column as u16, row as u16, class);
+                canvas.fill(column as u16, row, class);
                 column += 1.0;
             }
         }
-        row += 1.0;
     }
 }
 
-fn draw_line(canvas: &mut Canvas, points: &[DotPoint], class: Class, bounds: Bounds) {
-    for segment in points.windows(2) {
-        let Some(((x0, y0), (x1, y1))) = clip(segment[0], segment[1], bounds) else {
+fn draw_line(
+    canvas: &mut Canvas,
+    points: impl IntoIterator<Item = DotPoint>,
+    class: Class,
+    bounds: Bounds,
+) {
+    let mut points = points.into_iter();
+    let Some(mut start) = points.next() else {
+        return;
+    };
+    for end in points {
+        let segment = (start, end);
+        start = end;
+        let Some(((x0, y0), (x1, y1))) = clip(segment.0, segment.1, bounds) else {
             continue;
         };
         let steps = (x1 - x0).abs().max((y1 - y0).abs()).ceil().max(1.0);
@@ -365,7 +433,13 @@ mod tests {
         ];
         let hole = vec![(4.0, 4.0), (6.0, 4.0), (6.0, 8.0), (4.0, 8.0), (4.0, 4.0)];
         let bounds = Bounds::of(&canvas);
-        fill_rings(&mut canvas, &[outer, hole], Class::Water, bounds);
+        fill_rings(
+            &mut canvas,
+            [outer, hole],
+            Class::Water,
+            bounds,
+            &mut Vec::new(),
+        );
         assert_eq!(text(&canvas), ["#####", "## ##", "#####"]);
     }
 
@@ -373,7 +447,13 @@ mod tests {
     fn fill_rings_stops_at_the_bounds() {
         let mut canvas = Canvas::new(4, 1);
         let ring = vec![(0.0, 0.0), (8.0, 0.0), (8.0, 4.0), (0.0, 4.0), (0.0, 0.0)];
-        fill_rings(&mut canvas, &[ring], Class::Water, square(2.0, 6.0));
+        fill_rings(
+            &mut canvas,
+            [ring],
+            Class::Water,
+            square(2.0, 6.0),
+            &mut Vec::new(),
+        );
         assert_eq!(text(&canvas), [" ## "]);
     }
 
@@ -404,7 +484,7 @@ mod tests {
         let mut water = PreparedTile::default();
         water.shapes[Class::Water.index()].push(Shape {
             min_zoom: 0.0,
-            parts: vec![square],
+            parts: vec![Part::new(square)],
         });
         let empty = PreparedTile::default();
         let view = View::new(LatLon::new(0.0, 0.0).unwrap(), 1.0);
@@ -425,7 +505,7 @@ mod tests {
         let bounds = Bounds::of(&canvas);
         draw_line(
             &mut canvas,
-            &[(0.0, 1.5), (3.9, 1.5)],
+            [(0.0, 1.5), (3.9, 1.5)],
             Class::MinorRoad,
             bounds,
         );

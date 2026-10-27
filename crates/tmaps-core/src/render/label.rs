@@ -4,7 +4,7 @@ use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
 
 use super::canvas::Canvas;
-use super::scene::{Bounds, DotPoint, clip, to_dots};
+use super::scene::{Bounds, DotPoint, Part, clip, to_dots};
 use super::view::{View, VisibleTile};
 use super::{DOTS_PER_CELL_X, DOTS_PER_CELL_Y};
 use crate::mvt::{Feature, Geometry, Layer, Value};
@@ -47,6 +47,8 @@ pub(super) struct Candidate {
     min_zoom: f64,
     max_zoom: f64,
     text: String,
+    /// The cells of the text, measured once because grapheme segmentation is slow.
+    width: i32,
     /// Points are fractions of the tile width, as in the shapes of a prepared tile.
     anchor: Anchor,
 }
@@ -54,7 +56,7 @@ pub(super) struct Candidate {
 #[derive(Debug, Clone, PartialEq)]
 enum Anchor {
     Point([f32; 2]),
-    Lines(Vec<Vec<[f32; 2]>>),
+    Lines(Vec<Part>),
 }
 
 /// Reads a label from a feature of the `place`, `water_name`, or `transportation_name` layer
@@ -110,7 +112,7 @@ pub(super) fn candidate(layer: &Layer, feature: &Feature, lang: &str) -> Option<
         Geometry::Lines(lines) => Anchor::Lines(
             lines
                 .iter()
-                .map(|line| line.iter().map(|&point| normalize(point, extent)).collect())
+                .map(|line| Part::new(line.iter().map(|&point| normalize(point, extent)).collect()))
                 .collect(),
         ),
         _ => return None,
@@ -120,6 +122,7 @@ pub(super) fn candidate(layer: &Layer, feature: &Feature, lang: &str) -> Option<
         rank,
         min_zoom,
         max_zoom,
+        width: i32::try_from(display_width(&text)).ok()?,
         text,
         anchor,
     })
@@ -192,9 +195,7 @@ pub(super) fn place<'a>(
         if placed.contains(candidate.text.as_str()) {
             continue;
         }
-        let Ok(width) = i32::try_from(display_width(&candidate.text)) else {
-            continue;
-        };
+        let width = candidate.width;
         let spots = match &candidate.anchor {
             Anchor::Point(point) => point_spots(
                 to_dots(placement, *point),
@@ -282,17 +283,12 @@ fn point_spots((x, y): DotPoint, width: i32, rows: i32) -> Vec<Span> {
 
 /// Places for the text on the lines, longest first: the middle of each horizontal run of
 /// cells that is wide enough. Terminal text cannot follow a curve.
-fn line_spots(
-    canvas: &Canvas,
-    placement: &VisibleTile,
-    lines: &[Vec<[f32; 2]>],
-    width: i32,
-) -> Vec<Span> {
+fn line_spots(canvas: &Canvas, placement: &VisibleTile, lines: &[Part], width: i32) -> Vec<Span> {
     let bounds = Bounds::of(canvas);
     let mut runs = Vec::new();
-    for line in lines {
+    for line in lines.iter().filter(|line| line.touches(placement, bounds)) {
         let mut cells: Vec<(i32, i32)> = Vec::new();
-        for segment in line.windows(2) {
+        for segment in line.points.windows(2) {
             let Some((a, b)) = clip(
                 to_dots(placement, segment[0]),
                 to_dots(placement, segment[1]),
