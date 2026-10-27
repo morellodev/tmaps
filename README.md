@@ -42,7 +42,9 @@ lang = "it-IT"     # BCP 47 tag for place names and route instructions
 theme = "auto"     # or "dark", "light"
 
 [endpoints]          # your own servers, see "Data providers"
+tilejson = "https://tiles.example.org/planet"
 valhalla = "https://valhalla.example.org"
+photon = "https://photon.example.org"
 
 [places]
 home = "45.4642,9.19"
