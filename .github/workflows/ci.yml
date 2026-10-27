@@ -36,7 +36,7 @@ jobs:
             toolchain: stable
           - os: macos-latest
             toolchain: stable
-          # The MSRV in Cargo.toml.
+          # MSRV
           - os: ubuntu-latest
             toolchain: "1.96"
     runs-on: ${{ matrix.os }}
