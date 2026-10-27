@@ -38,8 +38,8 @@ pub struct App {
     source: SourceState,
     tiles: LruCache<TileId, PreparedTile>,
     pending: HashSet<TileId>,
-    failed: HashMap<TileId, Instant>,
-    error: Option<String>,
+    failed: HashMap<TileId, Failure>,
+    source_error: Option<String>,
     help: bool,
     /// The help rows above the visible part.
     help_scroll: usize,
@@ -73,6 +73,17 @@ struct Notice {
     until: Option<Instant>,
 }
 
+struct Failure {
+    at: Instant,
+    error: String,
+}
+
+impl Failure {
+    fn retry_at(&self) -> Instant {
+        self.at + RETRY_AFTER
+    }
+}
+
 enum SourceState {
     Idle,
     Loading,
@@ -89,7 +100,7 @@ impl App {
             tiles: LruCache::new(TILE_CACHE_SIZE),
             pending: HashSet::new(),
             failed: HashMap::new(),
-            error: None,
+            source_error: None,
             help: false,
             help_scroll: 0,
             help_overflow: 0,
@@ -155,7 +166,19 @@ impl App {
             .as_ref()
             .map(|notice| (notice.level, notice.text.as_str()))
             .or(self.trip.error().map(|error| (Level::Error, error)))
-            .or(self.error.as_deref().map(|error| (Level::Error, error)))
+            .or(self
+                .source_error
+                .as_deref()
+                .map(|error| (Level::Error, error)))
+            .or(self.tile_error().map(|error| (Level::Error, error)))
+    }
+
+    /// The newest error of a visible tile. It stays until the tile loads or leaves the screen.
+    fn tile_error(&self) -> Option<&str> {
+        self.failed
+            .values()
+            .max_by_key(|failure| failure.at)
+            .map(|failure| failure.error.as_str())
     }
 
     /// Tiles, a search, or a route are on the way.
@@ -238,21 +261,20 @@ impl App {
         match message {
             Message::Source(Ok(info)) => {
                 self.source = SourceState::Ready(info);
-                self.error = None;
+                self.source_error = None;
             }
             Message::Source(Err(error)) => {
                 self.source = SourceState::Failed(now);
-                self.error = Some(error);
+                self.source_error = Some(error);
             }
             Message::Tile(id, Ok(tile)) => {
                 self.pending.remove(&id);
+                self.failed.remove(&id);
                 self.tiles.put(id, *tile);
-                self.error = None;
             }
             Message::Tile(id, Err(error)) => {
                 self.pending.remove(&id);
-                self.failed.insert(id, now);
-                self.error = Some(error);
+                self.failed.insert(id, Failure { at: now, error });
             }
             Message::Skipped(id) => {
                 self.pending.remove(&id);
@@ -333,13 +355,18 @@ impl App {
     /// The visible tiles to request now, nearest to the center first. They count as pending
     /// until a [`Message`] arrives for them.
     pub fn tiles_to_load(&mut self, now: Instant) -> Vec<TileId> {
-        self.failed.retain(|_, at| now < *at + RETRY_AFTER);
+        let visible = self.visible_tiles();
+        // A failure stays during its retry, so that its error does not blink.
+        self.failed.retain(|id, _| visible.contains(id));
         let mut load = Vec::new();
-        for id in self.visible_tiles() {
+        for id in visible {
             // `get`, not `contains`: a visible tile becomes the most recently used.
             if self.tiles.get(&id).is_some()
                 || self.pending.contains(&id)
-                || self.failed.contains_key(&id)
+                || self
+                    .failed
+                    .get(&id)
+                    .is_some_and(|failure| now < failure.retry_at())
             {
                 continue;
             }
@@ -356,8 +383,9 @@ impl App {
             _ => None,
         };
         self.failed
-            .values()
-            .map(|at| *at + RETRY_AFTER)
+            .iter()
+            .filter(|(id, _)| !self.pending.contains(id))
+            .map(|(_, failure)| failure.retry_at())
             .chain(source_retry)
             .chain(self.notice.as_ref().and_then(|notice| notice.until))
             .min()
@@ -595,9 +623,10 @@ impl App {
                 self.center_on_step(location);
             }
             MouseEventKind::Drag(MouseButton::Left) => {
-                let Some((column, row)) = self.drag_from.replace((mouse.column, mouse.row)) else {
+                let Some(from) = self.drag_from.as_mut() else {
                     return false;
                 };
+                let (column, row) = std::mem::replace(from, (mouse.column, mouse.row));
                 // The map follows the pointer, so the view moves the other way.
                 self.view = self.view.pan(
                     (f64::from(column) - f64::from(mouse.column)) * f64::from(DOTS_PER_CELL_X),
@@ -867,6 +896,7 @@ mod tests {
         app.set_regions(split_regions(0));
         app.handle(&mouse(MouseEventKind::Down(MouseButton::Left), 70, 20));
         app.handle(&mouse(MouseEventKind::Drag(MouseButton::Left), 50, 20));
+        app.handle(&mouse(MouseEventKind::Drag(MouseButton::Left), 30, 20));
         assert_eq!(app.view(), View::new(milan(), 14.0));
     }
 
@@ -1343,6 +1373,54 @@ mod tests {
         let soon = app.tiles_to_load(now + Duration::from_secs(1));
         let later = app.tiles_to_load(now + RETRY_AFTER);
         assert_eq!((soon.contains(&id), later.contains(&id)), (false, true));
+    }
+
+    #[test]
+    fn tile_error_stays_after_another_tile_loads() {
+        let mut app = ready_app();
+        let now = Instant::now();
+        let ids = app.tiles_to_load(now);
+        app.receive(Message::Tile(ids[0], Err("offline".to_owned())), now);
+        app.receive(Message::Tile(ids[1], Ok(Box::default())), now);
+        assert_eq!(app.status(), Some((Level::Error, "offline")));
+    }
+
+    #[test]
+    fn tile_error_stays_during_the_retry_and_clears_when_the_tile_loads() {
+        let mut app = ready_app();
+        let now = Instant::now();
+        let id = app.tiles_to_load(now)[0];
+        app.receive(Message::Tile(id, Err("offline".to_owned())), now);
+        let retry = app.tiles_to_load(now + RETRY_AFTER);
+        let during = app.status().map(|(level, text)| (level, text.to_owned()));
+        app.receive(Message::Tile(id, Ok(Box::default())), now + RETRY_AFTER);
+        assert_eq!(
+            (retry.contains(&id), during, app.status()),
+            (true, Some((Level::Error, "offline".to_owned())), None)
+        );
+    }
+
+    #[test]
+    fn tile_error_clears_when_the_tile_leaves_the_screen() {
+        let mut app = ready_app();
+        let now = Instant::now();
+        let id = app.tiles_to_load(now)[0];
+        app.receive(Message::Tile(id, Err("offline".to_owned())), now);
+        for _ in 0..10 {
+            app.handle(&press(KeyCode::Char('L'), KeyModifiers::SHIFT));
+        }
+        let visible = app.tiles_to_load(now);
+        assert_eq!((visible.contains(&id), app.status()), (false, None));
+    }
+
+    #[test]
+    fn retried_tile_sets_no_deadline() {
+        let mut app = ready_app();
+        let now = Instant::now();
+        let id = app.tiles_to_load(now)[0];
+        app.receive(Message::Tile(id, Err("offline".to_owned())), now);
+        app.tiles_to_load(now + RETRY_AFTER);
+        assert_eq!(app.next_deadline(), None);
     }
 
     #[test]
