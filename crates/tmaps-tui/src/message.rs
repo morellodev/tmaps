@@ -18,7 +18,6 @@ pub enum Message {
     SearchResults(u64, Result<Vec<Place>, String>),
     /// A place is in the config file.
     PlaceSaved(String, LatLon),
-    /// A place is no longer in the config file.
     PlaceRemoved(String),
     /// A change to the saved places did not go into the config file.
     PlaceFailed(String),

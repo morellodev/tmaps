@@ -831,7 +831,8 @@ fn hints(app: &App, status: Status) -> &'static [Hint] {
         Some(Prompt::Search(search)) if search.removing.is_some() => {
             &[("Enter", "remove"), ("Esc", "keep")]
         }
-        Some(Prompt::Search(search)) if search.text.trim().starts_with('@') => &[
+        Some(Prompt::Search(search)) if search.chosen().is_none() => &[("Esc", "close")],
+        Some(Prompt::Search(search)) if search.saved_query().is_some() => &[
             ("↑↓", "select"),
             ("Enter", "go"),
             ("Ctrl-D", "remove"),
@@ -924,7 +925,7 @@ fn prompt_view(
     let hint = Style::new().fg(palette.muted());
     match prompt {
         Prompt::Search(search) => {
-            let saved = search.text.trim().starts_with('@');
+            let saved = search.saved_query().is_some();
             let note = if let Some(name) = &search.removing {
                 Some((
                     format!("Remove @{name}? Enter: remove. Esc: keep."),
@@ -969,6 +970,7 @@ fn prompt_view(
             invalid,
             location,
             label,
+            ..
         } => PromptView {
             title: " Save a place ",
             input: Some(("@", name.clone())),
@@ -1738,6 +1740,21 @@ mod tests {
         App::new(View::new(LatLon::new(45.4642, 9.19).unwrap(), 14.0)).with_places(BTreeMap::from(
             [("home".to_owned(), LatLon::new(45.4642, 9.19).unwrap())],
         ))
+    }
+
+    #[test]
+    fn search_without_a_result_hints_only_esc() {
+        let mut app = app_with_home();
+        type_keys(&mut app, "/@xyz");
+        let line = status_line(80, &app);
+        assert!(line.trim_start().starts_with("Esc close") && !line.contains("Enter"));
+    }
+
+    #[test]
+    fn saved_place_search_hints_the_removal() {
+        let mut app = app_with_home();
+        type_keys(&mut app, "'");
+        assert!(status_line(80, &app).contains("Ctrl-D remove"));
     }
 
     #[test]

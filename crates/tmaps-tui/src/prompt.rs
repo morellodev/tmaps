@@ -12,6 +12,8 @@ pub enum Prompt {
         location: LatLon,
         /// The label of a search result, or `None` for the crosshair.
         label: Option<String>,
+        /// The search that `Esc` goes back to.
+        search: Option<Search>,
     },
 }
 
@@ -20,6 +22,13 @@ impl Prompt {
     pub fn selected_mut(&mut self) -> Option<&mut usize> {
         match self {
             Self::Search(search) => Some(&mut search.selected),
+            Self::SavePlace { .. } => None,
+        }
+    }
+
+    pub fn take_removal(&mut self) -> Option<String> {
+        match self {
+            Self::Search(search) => search.removing.take(),
             Self::SavePlace { .. } => None,
         }
     }
@@ -40,6 +49,11 @@ pub struct Search {
 impl Search {
     pub fn chosen(&self) -> Option<&Place> {
         self.results.get(self.selected)
+    }
+
+    /// The text after `@`, for a search of the saved places only.
+    pub fn saved_query(&self) -> Option<&str> {
+        self.text.trim().strip_prefix('@').map(str::trim_start)
     }
 }
 
