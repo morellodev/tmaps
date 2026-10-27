@@ -1,11 +1,18 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use tmaps_core::LatLon;
 use tmaps_core::geocode::Place;
 
 /// A box over the map. While it is open, it takes the keys.
 #[derive(Debug)]
 pub enum Prompt {
     Search(Search),
-    SavePlace { name: String, invalid: bool },
+    SavePlace {
+        name: String,
+        invalid: bool,
+        location: LatLon,
+        /// The label of a search result, or `None` for the crosshair.
+        label: Option<String>,
+    },
 }
 
 impl Prompt {

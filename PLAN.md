@@ -54,7 +54,7 @@ The config file can change each endpoint. Providers are concrete types for now. 
   - `Tab`: next alternative route.
   - `]`/`[`: next/previous step of the itinerary. The map centers on the step, at street zoom or closer.
   - `p`: toggle the panel.
-  - `m`: save the cursor as a named place. `@` or `'`: jump to a place. `Ctrl-D` in the place list: remove a place.
+  - `m`: save the cursor as a named place. `@` or `'`: jump to a place. `Ctrl-D` in the place list: remove a place. `Ctrl-S` in the search results: save a result.
   - `?`: help. `q`: quit.
 - `s` and `e` take the point under the crosshair. Its name comes from a reverse geocode. Until the name arrives, or when there is no name, the panel shows the coordinates. The `A` and `B` markers cover the crosshair.
 - The route request starts when both points are set or when the mode changes. Each request has a number, so a late result of an older request is dropped. When new routes arrive, the view fits them.
@@ -65,7 +65,7 @@ The config file can change each endpoint. Providers are concrete types for now. 
 - `?` opens the help over the map. The status line stays visible. The keys are in groups (Map, Places, Route, App), in one column. When one column does not fit, they go in two columns. When two columns also do not fit, the keys are in one list without headings, with wrapped descriptions. When the list does not fit, `↑`/`↓` (or `j`/`k`) scroll it, and the box shows a scrollbar and `↑↓ scroll`. The help does not take the other keys.
 - `/` opens a search box at the top of the map, with half of the map width, from 60 to 100 columns. After a 300 ms pause in the typing, Photon gets the text with a bias to the map center. Each result shows its kind and its distance from the map center at the right, and the bottom border shows the result count. `↑`/`↓` select a result, `Enter` centers the map on it, and `Esc` closes the box. When the text is longer than the box, the box shows its end.
 - A search text that starts with `@` gets no Photon request. It lists the saved places whose name starts with the rest of the text, then the ones that contain it, without case. A bare `@` lists all saved places.
-- `m` asks for a name and saves the point at the crosshair in `[places]` of the config file. When a place has the typed name, the box says that `Enter` replaces it. `@` and `'` open the search box with the text `@`, so it lists all saved places. `Enter` centers the map on a place, at neighborhood zoom.
+- `m` asks for a name and saves the point at the crosshair in `[places]` of the config file. In a search that does not start with `@`, `Ctrl-S` asks for a name for the selected result, and the map does not move. The name box shows what it saves: the result label, or `The place at +`, with the coordinates at the right. When a place has the typed name, the box says that `Enter` replaces it. `@` and `'` open the search box with the text `@`, so it lists all saved places. `Enter` centers the map on a place, at neighborhood zoom.
 - In a search for `@`, `Ctrl-D` asks to remove the selected place: `Remove @home? Enter: remove. Esc: keep.` Another key or a click cancels the question, then works as usual. After the removal, the box stays open and the list loses the place.
 - An open box, except the help, takes all keys, except `Ctrl-C`. It has round corners in the accent color, and the map under it is dimmed.
 - Text boxes take the shell keys: `Ctrl-U` clears the text, and `Ctrl-W` or `Alt-Backspace` removes the last word. There is no cursor movement.
