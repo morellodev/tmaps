@@ -2,9 +2,8 @@ use std::fs;
 use std::io::{self, Write};
 use std::path::Path;
 
-/// Writes to a temporary file first, so that a reader in another process, or after a crash,
-/// gets the old file or the new file, never a part of the new file. An existing file keeps its
-/// permissions, and a symlink, such as a config file in a dotfiles repo, stays a symlink.
+/// Readers see the old or the new file, never a part. A symlink stays a symlink, and the file
+/// keeps its permissions.
 ///
 /// # Errors
 ///

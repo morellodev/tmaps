@@ -34,7 +34,6 @@ const MAP_MIN_HEIGHT: u16 = 8;
 const SUMMARY_WIDTH: u16 = PANEL_WIDTH - 4;
 /// A narrower drawer puts the steps under the summary.
 const DRAWER_SUMMARY_MIN_WIDTH: u16 = 24;
-/// Steps under the summary keep these rows, also when the summary is cut.
 const STEPS_MIN_HEIGHT: u16 = 3;
 /// Narrower terminals get the panel as a drawer below the map, so the map keeps its width.
 const SIDE_PANEL_MIN_WIDTH: u16 = 100;
@@ -398,7 +397,6 @@ fn draw_panel(
             Constraint::Fill(1),
         ]))
     } else {
-        // The summary can be higher than the drawer, and it must not hide all the steps.
         let height = u16::try_from(summary.len() + 1).unwrap_or(u16::MAX);
         inner.layout(&Layout::vertical([
             Constraint::Max(height),
@@ -1094,7 +1092,7 @@ fn draw_prompt(frame: &mut Frame, view: &PromptView, palette: Palette, area: Rec
         Constraint::Fill(1),
     ]));
     if let Some((prefix, text)) = &view.input {
-        // The cursor is always at the end, so the end stays visible, with a cell for the cursor.
+        // There is no cursor movement, so the end of the text stays visible.
         let room = usize::from(input_area.width).saturating_sub(display_width(prefix) + 1);
         let input = Line::from(format!("{prefix}{}", tail(text, room)));
         let column = u16::try_from(input.width()).unwrap_or(u16::MAX);
