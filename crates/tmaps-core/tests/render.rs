@@ -8,7 +8,7 @@ use tmaps_core::tiles::{DEFAULT_MAX_ZOOM, TileId};
 const WIDTH: u16 = 100;
 const HEIGHT: u16 = 40;
 
-fn fixture(id: TileId, lang: &str) -> PreparedTile {
+fn fixture_bytes(id: TileId) -> Vec<u8> {
     let path = format!(
         "{}/tests/fixtures/tiles/{}-{}-{}.pbf",
         env!("CARGO_MANIFEST_DIR"),
@@ -16,7 +16,11 @@ fn fixture(id: TileId, lang: &str) -> PreparedTile {
         id.x,
         id.y
     );
-    PreparedTile::new(&Tile::decode(&std::fs::read(path).unwrap()).unwrap(), lang)
+    std::fs::read(path).unwrap()
+}
+
+fn fixture(id: TileId, lang: &str) -> PreparedTile {
+    PreparedTile::decode(&fixture_bytes(id), lang).unwrap()
 }
 
 fn center_of(id: TileId) -> LatLon {
@@ -103,6 +107,14 @@ const MILAN_Z14: TileId = TileId {
     y: 5863,
 };
 const MILAN_Z5: TileId = TileId { z: 5, x: 16, y: 11 };
+
+#[test]
+fn decode_skips_only_the_layers_that_prepare_drops() {
+    for id in [MILAN_Z14, MILAN_Z5] {
+        let full = PreparedTile::new(&Tile::decode(&fixture_bytes(id)).unwrap(), "en");
+        assert_eq!(fixture(id, "en"), full, "tile {id}");
+    }
+}
 
 #[test]
 fn render_city_streets() {

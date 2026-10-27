@@ -93,11 +93,36 @@ impl Tile {
     ///
     /// [`Error::Provider`] if `bytes` is not a valid vector tile.
     pub fn decode(bytes: &[u8]) -> Result<Self> {
-        let tile = proto::Tile::decode(bytes)
-            .map_err(|error| Error::Provider(format!("invalid vector tile: {error}")))?;
+        let tile = proto::Tile::decode(bytes).map_err(|error| invalid(&error))?;
         let layers = tile.layers.into_iter().map(Layer::from_proto).collect();
         Ok(Self { layers })
     }
+
+    /// Like [`Tile::decode`], but keeps only the layers whose name passes `keep`. The other
+    /// layers are not decoded, which saves most of the time on tiles with many points of interest.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::Provider`] if `bytes` is not a valid vector tile.
+    pub fn decode_layers(bytes: &[u8], keep: impl Fn(&str) -> bool) -> Result<Self> {
+        let raw = proto::RawTile::decode(bytes).map_err(|error| invalid(&error))?;
+        let mut layers = Vec::new();
+        for layer in raw.layers {
+            let name = proto::LayerName::decode(layer.as_slice())
+                .map_err(|error| invalid(&error))?
+                .name;
+            if keep(&name) {
+                let layer =
+                    proto::Layer::decode(layer.as_slice()).map_err(|error| invalid(&error))?;
+                layers.push(Layer::from_proto(layer));
+            }
+        }
+        Ok(Self { layers })
+    }
+}
+
+fn invalid(error: &prost::DecodeError) -> Error {
+    Error::Provider(format!("invalid vector tile: {error}"))
 }
 
 impl Layer {
@@ -200,6 +225,20 @@ mod proto {
     pub struct Tile {
         #[prost(message, repeated, tag = "3")]
         pub layers: Vec<Layer>,
+    }
+
+    /// A [`Tile`] with the encoded bytes of each layer, to read the names first.
+    #[derive(Clone, PartialEq, prost::Message)]
+    pub struct RawTile {
+        #[prost(bytes = "vec", repeated, tag = "3")]
+        pub layers: Vec<Vec<u8>>,
+    }
+
+    /// Only the name of a [`Layer`]. Decoding skips the features.
+    #[derive(Clone, PartialEq, prost::Message)]
+    pub struct LayerName {
+        #[prost(string, required, tag = "1")]
+        pub name: String,
     }
 
     #[derive(Clone, PartialEq, prost::Message)]
@@ -344,6 +383,26 @@ mod tests {
                 Geometry::Lines(vec![vec![point(2, 2)]])
             );
         }
+    }
+
+    #[test]
+    fn decode_layers_keeps_only_the_layers_that_pass() {
+        let layer = |name: &str| proto::Layer {
+            version: 2,
+            name: name.to_owned(),
+            ..proto::Layer::default()
+        };
+        let bytes = proto::Tile {
+            layers: vec![layer("poi"), layer("water")],
+        }
+        .encode_to_vec();
+        let tile = Tile::decode_layers(&bytes, |name| name == "water").unwrap();
+        let names: Vec<&str> = tile
+            .layers
+            .iter()
+            .map(|layer| layer.name.as_str())
+            .collect();
+        assert_eq!(names, ["water"]);
     }
 
     #[test]

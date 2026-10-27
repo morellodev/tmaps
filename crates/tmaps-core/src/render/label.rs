@@ -59,6 +59,9 @@ enum Anchor {
     Lines(Vec<Part>),
 }
 
+/// The layers that [`candidate`] can read a label from.
+pub(super) const LAYERS: [&str; 3] = ["place", "water_name", "transportation_name"];
+
 /// Reads a label from a feature of the `place`, `water_name`, or `transportation_name` layer
 /// of the `OpenMapTiles` schema. `lang` is the language subtag of the names, for example `it`.
 pub(super) fn candidate(layer: &Layer, feature: &Feature, lang: &str) -> Option<Candidate> {

@@ -1,7 +1,6 @@
 use std::collections::HashSet;
 use std::sync::{Arc, Mutex, PoisonError};
 
-use tmaps_core::mvt::Tile;
 use tmaps_core::render::PreparedTile;
 use tmaps_core::tiles::{TileId, TileSource};
 use tokio::sync::{Semaphore, mpsc};
@@ -87,10 +86,8 @@ async fn prepare(
         .tile(id)
         .await
         .map_err(|error| describe(&error, Server::Map))?;
-    tokio::task::spawn_blocking(move || {
-        Tile::decode(&body).map(|tile| Box::new(PreparedTile::new(&tile, &lang)))
-    })
-    .await
-    .map_err(|error| error.to_string())?
-    .map_err(|_| format!("The map server sent tile {id}, but tmaps cannot read it."))
+    tokio::task::spawn_blocking(move || PreparedTile::decode(&body, &lang).map(Box::new))
+        .await
+        .map_err(|error| error.to_string())?
+        .map_err(|_| format!("The map server sent tile {id}, but tmaps cannot read it."))
 }

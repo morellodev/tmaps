@@ -1,11 +1,11 @@
 use super::canvas::Canvas;
 use super::label::{self, Candidate};
-use super::style::{Class, classify};
+use super::style::{self, Class, classify};
 use super::view::{View, VisibleTile};
 use super::{DOTS_PER_CELL_X, DOTS_PER_CELL_Y};
-use crate::LatLon;
 use crate::mvt::{self, Geometry};
 use crate::tiles::TileId;
+use crate::{LatLon, Result};
 
 /// The features of a tile that the renderer draws, grouped by class. Preparing a tile takes
 /// longer than drawing it, so callers prepare it once, off the UI thread.
@@ -107,6 +107,16 @@ struct Drawn<'a> {
 }
 
 impl PreparedTile {
+    /// Decodes and prepares a tile, without the layers that the renderer does not use.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::Provider`](crate::Error::Provider) if `bytes` is not a valid vector tile.
+    pub fn decode(bytes: &[u8], lang: &str) -> Result<Self> {
+        let uses = |name: &str| style::LAYERS.contains(&name) || label::LAYERS.contains(&name);
+        Ok(Self::new(&mvt::Tile::decode_layers(bytes, uses)?, lang))
+    }
+
     /// `lang` is a BCP 47 tag, for example `it-IT`. Labels use the names in its language when
     /// the tile has them.
     #[must_use]

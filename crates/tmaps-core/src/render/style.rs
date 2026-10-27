@@ -56,6 +56,17 @@ pub(super) struct Style {
     pub min_zoom: f64,
 }
 
+/// The layers that [`classify`] can give a style.
+pub(super) const LAYERS: [&str; 7] = [
+    "water",
+    "park",
+    "landcover",
+    "building",
+    "waterway",
+    "transportation",
+    "boundary",
+];
+
 /// Picks the style of a feature from its layer and properties in the `OpenMapTiles` schema:
 /// <https://openmaptiles.org/schema/>.
 pub(super) fn classify(layer: &Layer, feature: &Feature) -> Option<Style> {
