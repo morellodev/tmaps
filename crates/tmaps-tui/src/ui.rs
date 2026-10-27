@@ -32,6 +32,10 @@ const DRAWER_MAX_HEIGHT: u16 = 12;
 const MAP_MIN_HEIGHT: u16 = 8;
 /// The inner width of the side panel, inside the borders and the padding.
 const SUMMARY_WIDTH: u16 = PANEL_WIDTH - 4;
+/// A narrower drawer puts the steps under the summary.
+const DRAWER_SUMMARY_MIN_WIDTH: u16 = 24;
+/// Steps under the summary keep these rows, also when the summary is cut.
+const STEPS_MIN_HEIGHT: u16 = 3;
 /// Narrower terminals get the panel as a drawer below the map, so the map keeps its width.
 const SIDE_PANEL_MIN_WIDTH: u16 = 100;
 const PROMPT_WIDTH: u16 = 60;
@@ -343,9 +347,9 @@ fn draw_panel(
     frame.render_widget(block, area);
 
     // A drawer is wide and short, so the steps go next to the summary.
-    let side_by_side = inner.width >= 2 * SUMMARY_WIDTH;
+    let side_by_side = inner.width >= 2 * DRAWER_SUMMARY_MIN_WIDTH;
     let width = if side_by_side {
-        SUMMARY_WIDTH
+        SUMMARY_WIDTH.min(inner.width / 2)
     } else {
         inner.width
     };
@@ -390,14 +394,15 @@ fn draw_panel(
     }
     let [summary_area, steps_area] = if side_by_side {
         inner.layout(&Layout::horizontal([
-            Constraint::Length(SUMMARY_WIDTH),
+            Constraint::Length(width),
             Constraint::Fill(1),
         ]))
     } else {
+        // The summary can be higher than the drawer, and it must not hide all the steps.
         let height = u16::try_from(summary.len() + 1).unwrap_or(u16::MAX);
         inner.layout(&Layout::vertical([
-            Constraint::Length(height),
-            Constraint::Fill(1),
+            Constraint::Max(height),
+            Constraint::Min(STEPS_MIN_HEIGHT),
         ]))
     };
     frame.render_widget(Paragraph::new(summary), summary_area);
@@ -879,7 +884,8 @@ fn short_attribution(attribution: &str) -> String {
 /// What a prompt shows: an optional text input, then a list or a note.
 struct PromptView {
     title: &'static str,
-    input: Option<String>,
+    /// A prefix, and the text that the user types.
+    input: Option<(&'static str, String)>,
     /// A label, and a detail for the right side.
     items: Vec<(String, String)>,
     selected: Option<usize>,
@@ -913,7 +919,7 @@ fn prompt_view(
             };
             PromptView {
                 title: " Search ",
-                input: Some(format!("› {}", search.text)),
+                input: Some(("› ", search.text.clone())),
                 items: search
                     .results
                     .iter()
@@ -929,7 +935,7 @@ fn prompt_view(
         }
         Prompt::SavePlace { name, invalid } => PromptView {
             title: " Save the place at + ",
-            input: Some(format!("@{name}")),
+            input: Some(("@", name.clone())),
             items: Vec::new(),
             selected: None,
             note: Some(if *invalid {
@@ -1017,6 +1023,27 @@ fn cut(text: &str, width: usize) -> String {
     }
 }
 
+/// The end of `text` in at most `width` columns. A cut text starts with "…".
+fn tail(text: &str, width: usize) -> String {
+    if display_width(text) <= width {
+        return text.to_owned();
+    }
+    if width == 0 {
+        return String::new();
+    }
+    let mut kept = Vec::new();
+    let mut used = display_width("…");
+    for c in text.chars().rev() {
+        let char_width = display_width(c.encode_utf8(&mut [0; 4]));
+        if used + char_width > width {
+            break;
+        }
+        kept.push(c);
+        used += char_width;
+    }
+    std::iter::once('…').chain(kept.into_iter().rev()).collect()
+}
+
 /// An open box takes the keys. Its round corners show that also without colors.
 fn box_block(title: &'static str, palette: Palette) -> Block<'static> {
     Block::bordered()
@@ -1066,8 +1093,10 @@ fn draw_prompt(frame: &mut Frame, view: &PromptView, palette: Palette, area: Rec
         Constraint::Length(input_height),
         Constraint::Fill(1),
     ]));
-    if let Some(input) = &view.input {
-        let input = Line::from(input.as_str());
+    if let Some((prefix, text)) = &view.input {
+        // The cursor is always at the end, so the end stays visible, with a cell for the cursor.
+        let room = usize::from(input_area.width).saturating_sub(display_width(prefix) + 1);
+        let input = Line::from(format!("{prefix}{}", tail(text, room)));
         let column = u16::try_from(input.width()).unwrap_or(u16::MAX);
         frame.render_widget(input, input_area);
         if input_area.width > 0 {
@@ -1493,6 +1522,21 @@ mod tests {
     }
 
     #[test]
+    fn drawer_at_70_columns_shows_the_steps_next_to_the_summary() {
+        let text = screen(70, 20, &app_with_routes());
+        assert!(
+            text.lines()
+                .any(|line| line.contains("1 car") && line.contains("step 0"))
+        );
+    }
+
+    #[test]
+    fn narrow_drawer_shows_the_steps_under_the_summary() {
+        let text = screen(40, 20, &app_with_routes());
+        assert!(text.contains("1 car") && text.contains("step 0"));
+    }
+
+    #[test]
     fn drawer_shows_the_steps_next_to_the_summary() {
         let text = screen(80, 24, &app_with_routes());
         assert!(
@@ -1566,6 +1610,23 @@ mod tests {
             lines[4].contains(" 1 result "),
         ];
         assert_eq!(found, [true; 4]);
+    }
+
+    #[test]
+    fn long_search_text_shows_its_end() {
+        let mut app = App::new(View::new(LatLon::new(45.4642, 9.19).unwrap(), 14.0));
+        type_keys(&mut app, &format!("/{}END", "x".repeat(70)));
+        let text = screen(80, 24, &app);
+        let input = text.lines().nth(2).unwrap();
+        assert!(input.contains("› …x") && input.contains("END  │"));
+    }
+
+    #[test]
+    fn tail_keeps_the_end_of_the_text() {
+        assert_eq!(
+            [tail("Duomo", 5), tail("Duomo", 4), tail("Duomo", 0)],
+            ["Duomo", "…omo", ""]
+        );
     }
 
     #[test]
