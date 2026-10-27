@@ -69,6 +69,7 @@ const HELP: [HelpGroup; 4] = [
             ("/", "search, @name: saved places"),
             ("m", "save the place at +"),
             ("@  '", "go to a saved place"),
+            ("Ctrl-S", "save a search result"),
             ("Ctrl-D", "remove a saved place"),
             ("Ctrl-U", "clear the typed text"),
             ("Ctrl-W", "remove the last word"),
@@ -836,7 +837,12 @@ fn hints(app: &App, status: Status) -> &'static [Hint] {
             ("Ctrl-D", "remove"),
             ("Esc", "close"),
         ],
-        Some(Prompt::Search(_)) => &[("↑↓", "select"), ("Enter", "go"), ("Esc", "close")],
+        Some(Prompt::Search(_)) => &[
+            ("↑↓", "select"),
+            ("Enter", "go"),
+            ("Ctrl-S", "save"),
+            ("Esc", "close"),
+        ],
         Some(Prompt::SavePlace { .. }) => &[("Enter", "save"), ("Esc", "cancel")],
         None if app.trip().is_empty() => &[
             ("/", "search"),
@@ -960,10 +966,18 @@ fn prompt_view(
                 count: (!search.results.is_empty()).then(|| count(search.results.len(), "result")),
             }
         }
-        Prompt::SavePlace { name, invalid } => PromptView {
-            title: " Save the place at + ",
+        Prompt::SavePlace {
+            name,
+            invalid,
+            location,
+            label,
+        } => PromptView {
+            title: " Save a place ",
             input: Some(("@", name.clone())),
-            items: Vec::new(),
+            items: vec![(
+                label.clone().unwrap_or_else(|| "The place at +".to_owned()),
+                coordinates(*location),
+            )],
             selected: None,
             note: Some(if *invalid {
                 (
@@ -1605,8 +1619,8 @@ mod tests {
 
     #[test]
     fn help_overflow_counts_the_hidden_rows() {
-        // 18 rows of keys, and 11 visible rows: 13 above the status line, less the borders.
-        assert_eq!(help_overflow(44, 14), 7);
+        // 19 rows of keys, and 11 visible rows: 13 above the status line, less the borders.
+        assert_eq!(help_overflow(44, 14), 8);
     }
 
     fn type_keys(app: &mut App, keys: &str) {
@@ -1732,6 +1746,29 @@ mod tests {
         )));
         let text = screen(80, 24, &app);
         assert!(text.contains("▶ @home") && text.contains("Remove @home? Enter: remove."));
+    }
+
+    #[test]
+    fn save_prompt_shows_the_crosshair_and_its_coordinates() {
+        let mut app = app_with_home();
+        type_keys(&mut app, "m");
+        let text = screen(80, 24, &app);
+        assert!(text.contains("The place at +") && text.contains("45.46420, 9.19000"));
+    }
+
+    #[test]
+    fn save_prompt_shows_the_search_result() {
+        let mut app = app_with_search_result("Piazza del Duomo, Milano");
+        app.handle(&Event::Key(KeyEvent::new(
+            KeyCode::Char('s'),
+            KeyModifiers::CONTROL,
+        )));
+        let text = screen(80, 24, &app);
+        assert!(
+            text.contains(" Save a place ")
+                && text.contains("Piazza del Duomo, Milano")
+                && text.contains("45.46410, 9.19190")
+        );
     }
 
     #[test]
