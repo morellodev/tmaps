@@ -1,8 +1,8 @@
 //! Edits `[places]` in the config file. Other keys, comments, and formatting stay unchanged.
 
-use std::fs;
-use std::io::ErrorKind;
-use std::path::Path;
+use std::fs::{self, File};
+use std::io::{self, ErrorKind};
+use std::path::{Path, PathBuf};
 
 use crate::file::write_atomically;
 use crate::{Error, LatLon, Result};
@@ -62,6 +62,7 @@ fn edit(path: &Path, change: impl FnOnce(&mut dyn TableLike) -> Result<()>) -> R
         path: path.to_owned(),
         message,
     };
+    let _lock = lock(path).map_err(|error| config_error(error.to_string()))?;
     let text = match fs::read_to_string(path) {
         Ok(text) => text,
         Err(error) if error.kind() == ErrorKind::NotFound => String::new(),
@@ -78,6 +79,24 @@ fn edit(path: &Path, change: impl FnOnce(&mut dyn TableLike) -> Result<()>) -> R
     change(places)?;
     write_atomically(path, document.to_string().as_bytes())
         .map_err(|error| config_error(error.to_string()))
+}
+
+/// Serializes edits across processes, such as the TUI and a CLI command. The lock file stays:
+/// after a removal, two processes could lock two different files.
+fn lock(config: &Path) -> io::Result<File> {
+    let mut name = config.as_os_str().to_owned();
+    name.push(".lock");
+    let path = PathBuf::from(name);
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let file = File::options()
+        .create(true)
+        .write(true)
+        .truncate(false)
+        .open(path)?;
+    file.lock()?;
+    Ok(file)
 }
 
 #[cfg(test)]
@@ -121,6 +140,23 @@ mod tests {
                 fs::read_to_string(&path).unwrap(),
                 "[places]\nhome = \"45.46,9.19\"\n"
             );
+        }
+
+        #[test]
+        fn concurrent_adds_keep_every_place() {
+            let (_dir, path) = config_with("");
+            std::thread::scope(|scope| {
+                for thread in 0..8 {
+                    let path = &path;
+                    scope.spawn(move || {
+                        for place in 0..10 {
+                            add(path, &format!("p{thread}_{place}"), milan()).unwrap();
+                        }
+                    });
+                }
+            });
+            let text = fs::read_to_string(&path).unwrap();
+            assert_eq!(text.matches(" = ").count(), 80);
         }
 
         #[test]

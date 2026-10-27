@@ -63,8 +63,6 @@ pub struct Services {
     route_task: Mutex<Option<AbortHandle>>,
     last_search: Arc<AtomicU64>,
     searches: Arc<Mutex<LruCache<String, Vec<Place>>>>,
-    /// Saves read, change, and write the config file, so they must not overlap.
-    config_lock: Arc<Mutex<()>>,
 }
 
 impl Services {
@@ -84,7 +82,6 @@ impl Services {
             route_task: Mutex::default(),
             last_search: Arc::default(),
             searches: Arc::new(Mutex::new(LruCache::new(SEARCH_CACHE_SIZE))),
-            config_lock: Arc::default(),
         }
     }
 
@@ -134,9 +131,7 @@ impl Services {
             Request::CancelSearch => self.last_search.store(0, Ordering::Relaxed),
             Request::SavePlace { name, location } => {
                 let config_file = Arc::clone(&self.config_file);
-                let config_lock = Arc::clone(&self.config_lock);
                 tokio::task::spawn_blocking(move || {
-                    let _guard = config_lock.lock().unwrap_or_else(PoisonError::into_inner);
                     let message = match places::add(&config_file, &name, location) {
                         Ok(()) => Message::PlaceSaved(name, location),
                         Err(error) => Message::SaveFailed(format!("Cannot save @{name}: {error}")),
