@@ -89,7 +89,7 @@ pub async fn run(config: &Config, config_file: &Path, paths: &Paths) -> Result<(
         }
         Err(error) => Err(error.into()),
     };
-    // The drop flushes the rest of the buffer while the alternate screen is still active.
+    // Flushes the rest of the buffer before the alternate screen closes.
     drop(terminal);
     let _ = execute!(io::stdout(), EndSynchronizedUpdate, DisableMouseCapture);
     ratatui::restore();
@@ -99,8 +99,7 @@ pub async fn run(config: &Config, config_file: &Path, paths: &Paths) -> Result<(
 
 type Terminal = ratatui::Terminal<CrosstermBackend<BufWriter<Stdout>>>;
 
-/// Does the setup of `ratatui::try_init`, but with a `BufWriter`: `stdout()` is a `LineWriter`
-/// with a 1 KiB buffer, so a frame of a pan would go to the terminal in hundreds of writes.
+/// `ratatui::try_init`, but buffered: `stdout()` is a `LineWriter` with a 1 KiB buffer.
 fn init_terminal() -> io::Result<Terminal> {
     enable_raw_mode()?;
     execute!(io::stdout(), EnterAlternateScreen)?;
@@ -164,9 +163,8 @@ async fn event_loop(
             services.send(request);
         }
         if dirty {
-            // The terminal shows the frame only when it is complete (DEC mode 2026). Terminals
-            // without the mode ignore it. `execute!` sends the start now, so that the buffer is
-            // empty if the draw panics: the drop must not send it after the restore.
+            // DEC mode 2026: the terminal shows only complete frames. `execute!`, so that a
+            // panic in the draw cannot leave the start in the buffer for after the restore.
             execute!(terminal.backend_mut(), BeginSynchronizedUpdate)?;
             let mut regions = None;
             terminal.draw(|frame| regions = Some(ui::draw(frame, app, palette, units)))?;
@@ -178,8 +176,8 @@ async fn event_loop(
             biased;
             () = panicked.notified() => return Err(Error::Panic),
             mut event = events.next() => {
-                // A drag or a scroll queues many mouse events, and one frame shows them all. A
-                // key or a resize can change the layout, so the next event needs a new frame.
+                // Queued mouse events share one frame. A key or a resize can change the layout,
+                // so it ends the batch.
                 let mut dirty = false;
                 loop {
                     let mouse = matches!(event, Some(Ok(Event::Mouse(_))));

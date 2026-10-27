@@ -63,7 +63,6 @@ impl Bounds {
     }
 }
 
-/// A tile to draw, or the loaded ancestor of a tile that is not loaded yet.
 struct Drawn<'a> {
     placement: VisibleTile,
     tile: &'a PreparedTile,
@@ -207,7 +206,6 @@ pub fn render<'a>(
     canvas
 }
 
-/// The nearest loaded ancestor of a tile, placed so that it covers the tile.
 fn loaded_ancestor<'a>(
     placement: &VisibleTile,
     tile: impl Fn(TileId) -> Option<&'a PreparedTile>,
@@ -346,8 +344,7 @@ mod tests {
             .collect()
     }
 
-    /// A square from `start` to `end` dots on both axes.
-    fn bounds(start: f64, end: f64) -> Bounds {
+    fn square(start: f64, end: f64) -> Bounds {
         Bounds {
             left: start,
             top: start,
@@ -375,8 +372,8 @@ mod tests {
     #[test]
     fn fill_rings_stops_at_the_bounds() {
         let mut canvas = Canvas::new(4, 1);
-        let square = vec![(0.0, 0.0), (8.0, 0.0), (8.0, 4.0), (0.0, 4.0), (0.0, 0.0)];
-        fill_rings(&mut canvas, &[square], Class::Water, bounds(2.0, 6.0));
+        let ring = vec![(0.0, 0.0), (8.0, 0.0), (8.0, 4.0), (0.0, 4.0), (0.0, 0.0)];
+        fill_rings(&mut canvas, &[ring], Class::Water, square(2.0, 6.0));
         assert_eq!(text(&canvas), [" ## "]);
     }
 
@@ -437,13 +434,13 @@ mod tests {
 
     #[test]
     fn clip_drops_a_segment_outside_the_screen() {
-        assert_eq!(clip((-5.0, -5.0), (-1.0, 3.0), bounds(0.0, 10.0)), None);
+        assert_eq!(clip((-5.0, -5.0), (-1.0, 3.0), square(0.0, 10.0)), None);
     }
 
     #[test]
     fn clip_shortens_a_segment_across_the_screen() {
         assert_eq!(
-            clip((-10.0, 5.0), (20.0, 5.0), bounds(0.0, 10.0)),
+            clip((-10.0, 5.0), (20.0, 5.0), square(0.0, 10.0)),
             Some(((0.0, 5.0), (10.0, 5.0)))
         );
     }

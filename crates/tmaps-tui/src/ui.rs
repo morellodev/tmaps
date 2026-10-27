@@ -255,8 +255,8 @@ struct MapWidget<'a> {
 impl Widget for MapWidget<'_> {
     fn render(self, area: Rect, buf: &mut Buffer) {
         for (row, cells) in (area.y..area.bottom()).zip(self.canvas.rows()) {
-            // A space keeps the color of the cell before it: it shows no foreground, and each
-            // color change costs about 40 bytes of output.
+            // A space shows no foreground, so it keeps the previous color: a color change
+            // costs about 40 bytes of output.
             let mut fg = self.palette.text();
             for (column, cell) in (area.x..area.right()).zip(cells) {
                 let Some(target) = buf.cell_mut((column, row)) else {
