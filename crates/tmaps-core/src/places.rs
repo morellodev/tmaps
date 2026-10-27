@@ -4,6 +4,7 @@ use std::fs;
 use std::io::ErrorKind;
 use std::path::Path;
 
+use crate::file::write_atomically;
 use crate::{Error, LatLon, Result};
 use toml_edit::{DocumentMut, TableLike};
 
@@ -75,11 +76,8 @@ fn edit(path: &Path, change: impl FnOnce(&mut dyn TableLike) -> Result<()>) -> R
         .as_table_like_mut()
         .ok_or_else(|| config_error("places: expected a table".to_owned()))?;
     change(places)?;
-
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(|error| config_error(error.to_string()))?;
-    }
-    fs::write(path, document.to_string()).map_err(|error| config_error(error.to_string()))
+    write_atomically(path, document.to_string().as_bytes())
+        .map_err(|error| config_error(error.to_string()))
 }
 
 #[cfg(test)]
