@@ -6,7 +6,6 @@ use tmaps_core::geocode::Place;
 pub enum Prompt {
     Search(Search),
     SavePlace { name: String, invalid: bool },
-    Places { selected: usize },
 }
 
 impl Prompt {
@@ -14,7 +13,6 @@ impl Prompt {
     pub fn selected_mut(&mut self) -> Option<&mut usize> {
         match self {
             Self::Search(search) => Some(&mut search.selected),
-            Self::Places { selected } => Some(selected),
             Self::SavePlace { .. } => None,
         }
     }

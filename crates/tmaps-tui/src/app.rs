@@ -121,7 +121,7 @@ impl App {
         }
     }
 
-    /// The saved places that `'` lists.
+    /// The saved places that a search for `@` lists.
     #[must_use]
     pub fn with_places(mut self, places: BTreeMap<String, LatLon>) -> Self {
         self.places = places;
@@ -480,7 +480,7 @@ impl App {
                 name: String::new(),
                 invalid: false,
             }),
-            KeyCode::Char('\'') => self.open(Prompt::Places { selected: 0 }),
+            KeyCode::Char('@' | '\'') => self.open_saved_places(),
             _ => return false,
         }
         true
@@ -531,22 +531,16 @@ impl App {
                     return false;
                 }
             }
-            Prompt::Places { selected } => {
-                if key.code == KeyCode::Enter {
-                    let view = self
-                        .places
-                        .values()
-                        .nth(*selected)
-                        .map(|&location| View::new(location, PLACE_ZOOM));
-                    self.close_with(view);
-                } else if let Some(next) = prompt::select(*selected, self.places.len(), key.code) {
-                    *selected = next;
-                } else {
-                    return false;
-                }
-            }
         }
         true
+    }
+
+    fn open_saved_places(&mut self) {
+        self.open(Prompt::Search(Search {
+            text: "@".to_owned(),
+            ..Search::default()
+        }));
+        self.request_search();
     }
 
     /// Help covers the prompt, so it closes.
@@ -1385,6 +1379,26 @@ mod tests {
     }
 
     #[test]
+    fn saved_place_search_closes_the_help() {
+        let mut app = ready_app();
+        key(&mut app, KeyCode::Char('?'));
+        key(&mut app, KeyCode::Char('\''));
+        assert!(!app.help());
+    }
+
+    #[test]
+    fn backspace_on_the_at_sign_turns_to_a_place_search() {
+        let mut app = app_with_places(&["home"]);
+        key(&mut app, KeyCode::Char('\''));
+        key(&mut app, KeyCode::Backspace);
+        type_text(&mut app, "Roma");
+        assert_matches!(
+            app.take_requests().last(),
+            Some(Request::Search { text, .. }) if text == "Roma"
+        );
+    }
+
+    #[test]
     fn invalid_place_name_keeps_the_prompt_open() {
         let mut app = ready_app();
         key(&mut app, KeyCode::Char('m'));
@@ -1433,7 +1447,7 @@ mod tests {
     }
 
     #[test]
-    fn quote_goes_to_the_selected_place() {
+    fn quote_goes_to_the_selected_saved_place() {
         let rome = LatLon::new(41.9, 12.5).unwrap();
         let mut app = ready_app().with_places(BTreeMap::from([
             ("home".to_owned(), milan()),
@@ -1470,6 +1484,21 @@ mod tests {
         key(&mut app, KeyCode::Char('/'));
         type_text(&mut app, "@om");
         assert_eq!(result_labels(&app), ["@omega", "@home", "@rome"]);
+    }
+
+    #[test]
+    fn at_sign_on_the_map_lists_the_saved_places() {
+        let mut app = app_with_places(&["home", "work"]);
+        app.handle(&press(KeyCode::Char('@'), KeyModifiers::SHIFT));
+        assert_eq!(result_labels(&app), ["@home", "@work"]);
+    }
+
+    #[test]
+    fn quote_opens_a_saved_place_search_that_filters() {
+        let mut app = app_with_places(&["home", "work"]);
+        key(&mut app, KeyCode::Char('\''));
+        type_text(&mut app, "w");
+        assert_eq!(result_labels(&app), ["@work"]);
     }
 
     #[test]
@@ -1538,7 +1567,7 @@ mod tests {
     }
 
     #[test]
-    fn enter_without_places_closes_the_list() {
+    fn enter_without_saved_places_closes_the_search() {
         let mut app = ready_app();
         key(&mut app, KeyCode::Char('\''));
         key(&mut app, KeyCode::Enter);

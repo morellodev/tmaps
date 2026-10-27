@@ -54,7 +54,7 @@ The config file can change each endpoint. Providers are concrete types for now. 
   - `Tab`: next alternative route.
   - `]`/`[`: next/previous step of the itinerary. The map centers on the step, at street zoom or closer.
   - `p`: toggle the panel.
-  - `m`: save the cursor as a named place. `'`: jump to a place.
+  - `m`: save the cursor as a named place. `@` or `'`: jump to a place.
   - `?`: help. `q`: quit.
 - `s` and `e` take the point under the crosshair. Its name comes from a reverse geocode. Until the name arrives, or when there is no name, the panel shows the coordinates. The `A` and `B` markers cover the crosshair.
 - The route request starts when both points are set or when the mode changes. Each request has a number, so a late result of an older request is dropped. When new routes arrive, the view fits them.
@@ -64,7 +64,8 @@ The config file can change each endpoint. Providers are concrete types for now. 
 - A terminal smaller than 30×8 shows only a request for more room.
 - `?` opens the help over the map. The status line stays visible. The keys are in groups (Map, Places, Route, App), in one column. When one column does not fit, they go in two columns. When two columns also do not fit, the keys are in one list without headings, with wrapped descriptions. When the list does not fit, `↑`/`↓` (or `j`/`k`) scroll it, and the box shows a scrollbar and `↑↓ scroll`. The help does not take the other keys.
 - `/` opens a search box at the top of the map, with half of the map width, from 60 to 100 columns. After a 300 ms pause in the typing, Photon gets the text with a bias to the map center. Each result shows its kind and its distance from the map center at the right, and the bottom border shows the result count. `↑`/`↓` select a result, `Enter` centers the map on it, and `Esc` closes the box. When the text is longer than the box, the box shows its end.
-- `m` asks for a name and saves the point at the crosshair in `[places]` of the config file. `'` lists the saved places with their coordinates at the right and the place count on the bottom border. `Enter` centers the map on a place.
+- A search text that starts with `@` gets no Photon request. It lists the saved places whose name starts with the rest of the text, then the ones that contain it, without case. A bare `@` lists all saved places.
+- `m` asks for a name and saves the point at the crosshair in `[places]` of the config file. `@` and `'` open the search box with the text `@`, so it lists all saved places. `Enter` centers the map on a place, at neighborhood zoom.
 - An open box, except the help, takes all keys, except `Ctrl-C`. It has round corners in the accent color, and the map under it is dimmed.
 - Text boxes take the shell keys: `Ctrl-U` clears the text, and `Ctrl-W` or `Alt-Backspace` removes the last word. There is no cursor movement.
 - Mouse:
@@ -72,7 +73,7 @@ The config file can change each endpoint. Providers are concrete types for now. 
   - On the panel, a click on a step and the wheel select a step, like `]`/`[`. A click on the empty rows under the steps does nothing.
   - On a help that does not fit, the wheel scrolls the help. On a help that fits, and outside the help box, the wheel zooms the map.
   - While a box is open, the map does not move. In a box with a list, the wheel moves the selection, a click selects a row, and a click on the selected row acts like `Enter`.
-- The status line shows the keys for what has the keys now, such as `/ search  s start  e end  ' places  ? keys`. A narrow line drops whole parts, never a part of a word: the position first, then the hints except the last, then the long attribution. When a route shows, the short attribution goes before the route. The short attribution names only the copyright holders. When the short attribution does not fit alone, the last hint gets the line.
+- The status line shows the keys for what has the keys now, such as `/ search  s start  e end  @ places  ? keys`. A narrow line drops whole parts, never a part of a word: the position first, then the hints except the last, then the long attribution. When a route shows, the short attribution goes before the route. The short attribution names only the copyright holders. When the short attribution does not fit alone, the last hint gets the line.
 - A braille spinner shows while tiles, a search, or routes load. The screen redraws 10 times per second only while work is pending.
 - Lists mark the selected row with `▶` and reverse video, so the selection shows also without colors.
 - Colors: truecolor with a 256-color fallback. Dark and light themes. `theme = "auto"` (the default) asks the terminal for its background color with `terminal-colorsaurus` before the event reader starts. A terminal that does not answer gets the dark theme after a 1 s timeout. Obey `NO_COLOR` and `TERM=dumb`. A non-empty `FORCE_COLOR` overrides both (force-color.org). The route uses a strong accent color. Alternatives are dimmed.

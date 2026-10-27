@@ -67,7 +67,7 @@ const HELP: [HelpGroup; 4] = [
         &[
             ("/", "search, @name: saved places"),
             ("m", "save the place at +"),
-            ("'", "go to a saved place"),
+            ("@  '", "go to a saved place"),
             ("Ctrl-U", "clear the typed text"),
             ("Ctrl-W", "remove the last word"),
         ],
@@ -825,15 +825,13 @@ fn hints(app: &App, status: Status) -> &'static [Hint] {
         return &[("Esc", "close")];
     }
     match app.prompt() {
-        Some(Prompt::Search(_) | Prompt::Places { .. }) => {
-            &[("↑↓", "select"), ("Enter", "go"), ("Esc", "close")]
-        }
+        Some(Prompt::Search(_)) => &[("↑↓", "select"), ("Enter", "go"), ("Esc", "close")],
         Some(Prompt::SavePlace { .. }) => &[("Enter", "save"), ("Esc", "cancel")],
         None if app.trip().is_empty() => &[
             ("/", "search"),
             ("s", "start"),
             ("e", "end"),
-            ("'", "places"),
+            ("@", "places"),
             ("?", "keys"),
         ],
         // A short terminal hides the panel, so `p` cannot show it.
@@ -963,23 +961,6 @@ fn prompt_view(
                 )
             }),
             count: None,
-        },
-        Prompt::Places { selected } => PromptView {
-            title: " Saved places ",
-            input: None,
-            items: app
-                .places()
-                .iter()
-                .map(|(name, location)| (format!("@{name}"), coordinates(*location)))
-                .collect(),
-            selected: Some(*selected),
-            note: app.places().is_empty().then(|| {
-                (
-                    "No saved places. m: save the place at +".to_owned(),
-                    Style::new(),
-                )
-            }),
-            count: (!app.places().is_empty()).then(|| count(app.places().len(), "place")),
         },
     }
 }
@@ -1690,7 +1671,7 @@ mod tests {
     }
 
     #[test]
-    fn empty_place_list_tells_how_to_save_a_place() {
+    fn quote_without_places_tells_how_to_save_a_place() {
         let mut app = App::new(View::new(LatLon::new(45.4642, 9.19).unwrap(), 14.0));
         type_keys(&mut app, "'");
         assert!(screen(80, 24, &app).contains("No saved places."));
