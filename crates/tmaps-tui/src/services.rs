@@ -236,21 +236,23 @@ mod tests {
             to: LatLon::new(41.9028, 12.4964).unwrap(),
             mode: Mode::Car,
         };
-        let past_debounce = ROUTE_DEBOUNCE + Duration::from_millis(50);
-        services.send(route(1));
-        tokio::time::sleep(past_debounce).await;
-        // The router throttle holds request 2 for about one second.
-        services.send(route(2));
-        tokio::time::sleep(past_debounce).await;
-        services.send(route(3));
-        let mut ids = Vec::new();
-        while ids.len() < 2 {
-            if let Some(Message::Routes(id, _)) = receiver.recv().await {
-                ids.push(id);
+        let mut next_route = async || {
+            loop {
+                if let Some(Message::Routes(id, _)) = receiver.recv().await {
+                    return id;
+                }
             }
-        }
+        };
+        let timeout = Duration::from_secs(5);
+        services.send(route(1));
+        let first = tokio::time::timeout(timeout, next_route()).await.unwrap();
+        // The router throttle holds request 2 until one second after request 1.
+        services.send(route(2));
+        tokio::time::sleep(ROUTE_DEBOUNCE + Duration::from_millis(50)).await;
+        services.send(route(3));
+        let second = tokio::time::timeout(timeout, next_route()).await.unwrap();
         let requests = server.received_requests().await.unwrap().len();
-        assert_eq!((ids, requests), (vec![1, 3], 2));
+        assert_eq!((first, second, requests), (1, 3, 2));
     }
 
     #[test]
