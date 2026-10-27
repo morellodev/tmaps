@@ -1,6 +1,5 @@
 ---
 source: crates/tmaps-core/tests/render.rs
-assertion_line: 108
 expression: "snapshot(MILAN_Z14, 16.0, \"it-IT\")"
 ---
   ⠈⢾⣣             ⠈⠢⡑⢄⡜⢣⠔⠁                                                   ⣀⢔⡩⣊⠕⠉                 
@@ -85,4 +84,12 @@ bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbpmm pppbbbbbbbbbbbbbbbbbbpppppppppppppp
 bbbbbbbbbbbbbbb    bbb             bbbbbbppm  pbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbppp      p  
 bbbbbbbbbbbbbb     bbbb           bbb bbbbpmmmppbbbb    bbbb  bbbbbbbb  bbbbbbbbbbbbbbbbp p      p  
 
+32, 11 Road: Piazza Filippo Meda
+25, 40 Road: Via Monte Napoleone
+ 9, 61 Road: Via Sant'Andrea
+29, 41 Road: Via San Pietro all'Orto
+28, 16 Road: Via Pietro Verri
+12, 16 Road: Via Bigli
+ 0, 27 Road: Via Gesù
+21, 74 Road: Via Bagutta
 35, 44 Road: Corso Giacomo Matteotti

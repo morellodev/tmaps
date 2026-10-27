@@ -5,6 +5,7 @@ use unicode_width::UnicodeWidthStr;
 
 use super::canvas::Canvas;
 use super::scene::{Bounds, DotPoint, Part, clip, to_dots};
+use super::style::Class;
 use super::view::{View, VisibleTile};
 use super::{DOTS_PER_CELL_X, DOTS_PER_CELL_Y};
 use crate::mvt::{Feature, Geometry, Layer, Value};
@@ -49,6 +50,8 @@ pub(super) struct Candidate {
     text: String,
     /// The cells of the text, measured once because grapheme segmentation is slow.
     width: i32,
+    /// Two lines of a point label, for when one line does not fit.
+    wrapped: Option<[(String, i32); 2]>,
     /// Points are fractions of the tile width, as in the shapes of a prepared tile.
     anchor: Anchor,
 }
@@ -126,6 +129,9 @@ pub(super) fn candidate(layer: &Layer, feature: &Feature, lang: &str) -> Option<
         min_zoom,
         max_zoom,
         width: i32::try_from(display_width(&text)).ok()?,
+        wrapped: matches!(anchor, Anchor::Point(_))
+            .then(|| wrap(&text))
+            .flatten(),
         text,
         anchor,
     })
@@ -163,6 +169,22 @@ fn display_width(text: &str) -> usize {
         .sum()
 }
 
+/// The text in two lines, split at the space that makes the longer line shortest.
+fn wrap(text: &str) -> Option<[(String, i32); 2]> {
+    let line = |text: &str| {
+        let width = i32::try_from(display_width(text)).ok()?;
+        (!text.is_empty()).then(|| (text.to_owned(), width))
+    };
+    text.match_indices(' ')
+        .filter_map(|(index, _)| {
+            Some([
+                line(text[..index].trim_end())?,
+                line(text[index..].trim_start())?,
+            ])
+        })
+        .min_by_key(|[(_, first), (_, second)]| *first.max(second))
+}
+
 #[expect(clippy::cast_precision_loss, reason = "tile units are below 2^24")]
 fn normalize(point: crate::mvt::Point, extent: u32) -> [f32; 2] {
     let extent = extent as f32;
@@ -198,16 +220,26 @@ pub(super) fn place<'a>(
         if placed.contains(candidate.text.as_str()) {
             continue;
         }
-        let width = candidate.width;
-        let spots = match &candidate.anchor {
-            Anchor::Point(point) => point_spots(
-                to_dots(placement, *point),
-                width,
-                i32::from(canvas.height()),
-            ),
-            Anchor::Lines(lines) => line_spots(canvas, placement, lines, width),
+        let text = (candidate.text.as_str(), candidate.width);
+        // A free row around a road name keeps the names of near roads from stacking into a block.
+        let free_rows = i32::from(candidate.class == LabelClass::Road);
+        let blocks = match &candidate.anchor {
+            Anchor::Point(point) => {
+                let point = to_dots(placement, *point);
+                let rows = i32::from(canvas.height());
+                let mut blocks = point_spots(point, &[text], rows);
+                if let Some([first, second]) = &candidate.wrapped {
+                    let lines = [(first.0.as_str(), first.1), (second.0.as_str(), second.1)];
+                    blocks.extend(point_spots(point, &lines, rows));
+                }
+                blocks
+            }
+            Anchor::Lines(lines) => line_spots(canvas, placement, lines, text.1)
+                .into_iter()
+                .map(|spot| vec![(spot, text.0)])
+                .collect(),
         };
-        let free = spots.into_iter().find(|spot| {
+        let fits = |spot: &Span| {
             let (Ok(row), Ok(start), Ok(end)) = (
                 u16::try_from(spot.row),
                 u16::try_from(spot.start),
@@ -218,22 +250,27 @@ pub(super) fn place<'a>(
             end <= canvas.width()
                 && row < canvas.height()
                 && !canvas.has_route(row, start..end)
-                && !taken.iter().any(|other| spot.padded().overlaps(other))
-        });
-        let Some(spot) = free else {
+                && !taken.iter().any(|other| spot.crowds(other, free_rows))
+        };
+        let Some(block) = blocks
+            .into_iter()
+            .find(|block| block.iter().all(|(spot, _)| fits(spot)))
+        else {
             continue;
         };
-        let (Ok(column), Ok(row)) = (u16::try_from(spot.start), u16::try_from(spot.row)) else {
-            continue;
-        };
-        taken.push(spot);
         placed.insert(candidate.text.as_str());
-        canvas.add_label(Label {
-            column,
-            row,
-            text: candidate.text.clone(),
-            class: candidate.class,
-        });
+        for (spot, line) in block {
+            let (Ok(column), Ok(row)) = (u16::try_from(spot.start), u16::try_from(spot.row)) else {
+                continue;
+            };
+            taken.push(spot);
+            canvas.add_label(Label {
+                column,
+                row,
+                text: line.to_owned(),
+                class: candidate.class,
+            });
+        }
     }
 }
 
@@ -246,24 +283,29 @@ struct Span {
 }
 
 impl Span {
-    /// One free cell on each side keeps two labels apart.
-    fn padded(self) -> Self {
-        Self {
-            start: self.start - 1,
-            end: self.end + 1,
-            ..self
-        }
+    /// Whether `other` is less than one free cell away, on this row or on `rows` rows around it.
+    fn crowds(self, other: &Self, rows: i32) -> bool {
+        (self.row - other.row).abs() <= rows
+            && self.start - 1 < other.end
+            && other.start < self.end + 1
     }
 
-    fn overlaps(self, other: &Self) -> bool {
-        self.row == other.row && self.start < other.end && other.start < self.end
+    fn width(self) -> i32 {
+        self.end - self.start
+    }
+
+    fn columns(self) -> std::ops::Range<i32> {
+        self.start..self.end
     }
 }
 
-/// The text centered on the cell of the point, then on the row above or below it. Without the
-/// other rows, the cursor would hide the name of the place at the center. A point outside the
-/// `rows` of the canvas gets no spot.
-fn point_spots((x, y): DotPoint, width: i32, rows: i32) -> Vec<Span> {
+/// Blocks of one or two lines centered on the point: on its row first, then above or below it,
+/// so that the cursor does not hide the name of the place at the center.
+fn point_spots<'t>(
+    (x, y): DotPoint,
+    lines: &[(&'t str, i32)],
+    rows: i32,
+) -> Vec<Vec<(Span, &'t str)>> {
     let (Some(column), Some(row)) = (
         cell_index(x, DOTS_PER_CELL_X),
         cell_index(y, DOTS_PER_CELL_Y),
@@ -273,60 +315,182 @@ fn point_spots((x, y): DotPoint, width: i32, rows: i32) -> Vec<Span> {
     if !(0..rows).contains(&row) {
         return Vec::new();
     }
-    let start = column - width / 2;
-    [row, row - 1, row + 1]
-        .into_iter()
-        .map(|row| Span {
-            row,
-            start,
-            end: start + width,
+    let tops: &[i32] = if lines.len() == 1 {
+        &[row, row - 1, row + 1]
+    } else {
+        &[row - 1, row, row - 2, row + 1]
+    };
+    tops.iter()
+        .map(|&top| {
+            (top..)
+                .zip(lines)
+                .map(|(row, &(text, width))| {
+                    let start = column - width / 2;
+                    let spot = Span {
+                        row,
+                        start,
+                        end: start + width,
+                    };
+                    (spot, text)
+                })
+                .collect()
         })
         .collect()
 }
 
-/// Places for the text on the lines, longest first: the middle of each horizontal run of
-/// cells that is wide enough. Terminal text cannot follow a curve.
+/// Terminal text cannot follow a curve: it goes on a row where the line is about horizontal,
+/// else beside a steep part. Spots near the middle of the line come first.
 fn line_spots(canvas: &Canvas, placement: &VisibleTile, lines: &[Part], width: i32) -> Vec<Span> {
     let bounds = Bounds::of(canvas);
-    let mut runs = Vec::new();
+    let mut on_line = Vec::new();
+    let mut beside = Vec::new();
     for line in lines.iter().filter(|line| line.touches(placement, bounds)) {
-        let mut cells: Vec<(i32, i32)> = Vec::new();
-        for segment in line.points.windows(2) {
-            let Some((a, b)) = clip(
-                to_dots(placement, segment[0]),
-                to_dots(placement, segment[1]),
-                bounds,
-            ) else {
-                continue;
-            };
-            let steps = (b.0 - a.0).abs().max((b.1 - a.1).abs()).ceil().max(1.0);
-            let mut step = 0.0;
-            while step <= steps {
-                let t = step / steps;
-                let cell = cell_index(a.0 + t * (b.0 - a.0), DOTS_PER_CELL_X)
-                    .zip(cell_index(a.1 + t * (b.1 - a.1), DOTS_PER_CELL_Y));
-                if let Some(cell) = cell
-                    && cells.last() != Some(&cell)
-                {
-                    cells.push(cell);
-                }
-                step += 1.0;
-            }
-        }
-        runs.extend(horizontal_runs(&cells));
-    }
-    runs.retain(|run| run.end - run.start >= width);
-    runs.sort_by_key(|run| std::cmp::Reverse(run.end - run.start));
-    runs.into_iter()
-        .map(|run| {
-            let start = run.start + (run.end - run.start - width) / 2;
-            Span {
+        let cells = line_cells(placement, line, bounds);
+        let Some(&(middle_column, middle_row)) = cells.get(cells.len() / 2) else {
+            continue;
+        };
+        // A cell is about twice as high as it is wide.
+        let distance = |spot: Span| {
+            (i32::midpoint(spot.start, spot.end) - middle_column).abs()
+                + 2 * (spot.row - middle_row).abs()
+        };
+        let path: HashSet<(i32, i32)> = cells.iter().copied().collect();
+        // Tunnels and the lines of other zoom levels have names but no dots.
+        let drawn = |run: Span| {
+            let dotted = run
+                .columns()
+                .filter(|&column| has_dots(canvas, column, run.row));
+            2 * dotted.count() >= run.columns().len()
+        };
+        for run in horizontal_runs(&cells)
+            .into_iter()
+            .filter(|&run| drawn(run))
+        {
+            let start = run.start + (run.width() - width) / 2;
+            let centered = Span {
                 row: run.row,
                 start,
                 end: start + width,
+            };
+            if let Some(cells_on_row) = cells_under(&path, centered) {
+                on_line.push((
+                    std::cmp::Reverse(cells_on_row),
+                    distance(centered),
+                    centered,
+                ));
+                continue;
             }
-        })
+            beside.extend(beside_run(canvas, &path, run, width).map(|spot| (distance(spot), spot)));
+        }
+    }
+    on_line.sort_by_key(|&(cells_on_row, distance, _)| (cells_on_row, distance));
+    beside.sort_by_key(|&(distance, _)| distance);
+    on_line
+        .into_iter()
+        .map(|(_, _, spot)| spot)
+        .chain(beside.into_iter().map(|(_, spot)| spot))
         .collect()
+}
+
+/// Room for the sidewalks of a road between the road and a text beside it.
+const MAX_GAP: i32 = 6;
+
+/// The text right and left of a run. It skips paths and its own line, but no other line, which
+/// it could name. Two blank cells on the far side keep it nearer to its own line.
+fn beside_run(
+    canvas: &Canvas,
+    path: &HashSet<(i32, i32)>,
+    run: Span,
+    width: i32,
+) -> impl Iterator<Item = Span> {
+    let blank = |column: i32| !has_dots(canvas, column, run.row);
+    let skippable = |column: i32| {
+        let cell = u16::try_from(column)
+            .ok()
+            .zip(u16::try_from(run.row).ok())
+            .and_then(|(column, row)| canvas.cell(column, row));
+        blank(column)
+            || path.contains(&(column, run.row))
+            || cell.and_then(|cell| cell.fg) == Some(Class::Path)
+    };
+    let side = |edge: i32, step: i32| {
+        for offset in 0..=MAX_GAP {
+            let gap = edge + step * offset;
+            if !skippable(gap) {
+                return None;
+            }
+            if !blank(gap) {
+                continue;
+            }
+            let start = if step > 0 { gap + 1 } else { gap - width };
+            let spot = Span {
+                row: run.row,
+                start,
+                end: start + width,
+            };
+            let room = if step > 0 {
+                spot.start - 1..=spot.end + 1
+            } else {
+                spot.start - 2..=spot.end
+            };
+            if room.into_iter().all(blank) {
+                return Some(spot);
+            }
+        }
+        None
+    };
+    [side(run.end, 1), side(run.start - 1, -1)]
+        .into_iter()
+        .flatten()
+}
+
+fn has_dots(canvas: &Canvas, column: i32, row: i32) -> bool {
+    let (Ok(column), Ok(row)) = (u16::try_from(column), u16::try_from(row)) else {
+        return false;
+    };
+    canvas.cell(column, row).is_some_and(|cell| cell.dots != 0)
+}
+
+fn line_cells(placement: &VisibleTile, line: &Part, bounds: Bounds) -> Vec<(i32, i32)> {
+    let mut cells: Vec<(i32, i32)> = Vec::new();
+    for segment in line.points.windows(2) {
+        let Some((a, b)) = clip(
+            to_dots(placement, segment[0]),
+            to_dots(placement, segment[1]),
+            bounds,
+        ) else {
+            continue;
+        };
+        let steps = (b.0 - a.0).abs().max((b.1 - a.1).abs()).ceil().max(1.0);
+        let mut step = 0.0;
+        while step <= steps {
+            let t = step / steps;
+            let cell = cell_index(a.0 + t * (b.0 - a.0), DOTS_PER_CELL_X)
+                .zip(cell_index(a.1 + t * (b.1 - a.1), DOTS_PER_CELL_Y));
+            if let Some(cell) = cell
+                && cells.last() != Some(&cell)
+            {
+                cells.push(cell);
+            }
+            step += 1.0;
+        }
+    }
+    cells
+}
+
+/// How many cells of the spot are on the path, if each column of the spot has the path on its
+/// row or a row next to it.
+fn cells_under(path: &HashSet<(i32, i32)>, spot: Span) -> Option<usize> {
+    let mut on_row = 0;
+    for column in spot.columns() {
+        if path.contains(&(column, spot.row)) {
+            on_row += 1;
+        } else if !path.contains(&(column, spot.row - 1)) && !path.contains(&(column, spot.row + 1))
+        {
+            return None;
+        }
+    }
+    Some(on_row)
 }
 
 /// Splits a path of `(column, row)` cells into runs of neighbor cells on one row.
@@ -425,6 +589,7 @@ mod tests {
         candidates.iter().map(|c| c.text.as_str()).collect()
     }
 
+    /// Draws the roads of the candidates, then places the labels.
     fn labels(tiles: &[&[Candidate]], zoom: f64) -> Vec<Label> {
         let tile = VisibleTile {
             id: TileId { z: 0, x: 0, y: 0 },
@@ -433,6 +598,17 @@ mod tests {
             size: f64::from(EXTENT),
         };
         let mut canvas = Canvas::new(20, 10);
+        let bounds = Bounds::of(&canvas);
+        for candidate in tiles.iter().copied().flatten() {
+            if let Anchor::Lines(lines) = &candidate.anchor {
+                for (column, row) in lines
+                    .iter()
+                    .flat_map(|line| line_cells(&tile, line, bounds))
+                {
+                    canvas.set_dot(i64::from(column) * 2, i64::from(row) * 4, Class::MinorRoad);
+                }
+            }
+        }
         let view = View::new(LatLon::new(0.0, 0.0).unwrap(), zoom);
         place(
             &mut canvas,
@@ -542,12 +718,80 @@ mod tests {
     }
 
     #[test]
-    fn diagonal_road_gets_no_label() {
+    fn diagonal_road_gets_a_label_beside_the_line() {
         let found = road(
-            vec![("class", string("primary")), ("name", string("Via"))],
+            vec![("class", string("primary")), ("name", string("Via Roma"))],
             line(&[(0, 0), (39, 39)]),
         );
-        assert_eq!(labels(&[&found], 5.0), []);
+        assert_eq!(
+            labels(&[&found], 5.0),
+            [label(1, 5, "Via Roma", LabelClass::Road)]
+        );
+    }
+
+    #[test]
+    fn gently_sloped_road_gets_a_label_on_the_line() {
+        let found = road(
+            vec![("class", string("primary")), ("name", string("Via Roma"))],
+            line(&[(0, 6), (39, 18)]),
+        );
+        assert_eq!(
+            labels(&[&found], 5.0),
+            [label(10, 3, "Via Roma", LabelClass::Road)]
+        );
+    }
+
+    #[test]
+    fn road_labels_keep_a_free_row_between_them() {
+        let found = candidates(
+            "transportation_name",
+            vec![
+                (
+                    line(&[(0, 9), (39, 9)]),
+                    vec![("class", string("primary")), ("name", string("Via Roma"))],
+                ),
+                (
+                    line(&[(0, 13), (39, 13)]),
+                    vec![("class", string("primary")), ("name", string("Via Po"))],
+                ),
+            ],
+        );
+        assert_eq!(
+            labels(&[&found], 5.0),
+            [label(6, 2, "Via Roma", LabelClass::Road)]
+        );
+    }
+
+    #[test]
+    fn text_beside_a_road_skips_a_path_but_not_another_road() {
+        let mut canvas = Canvas::new(20, 1);
+        canvas.set_dot(20, 0, Class::MinorRoad);
+        canvas.set_dot(24, 0, Class::Path);
+        canvas.set_dot(16, 0, Class::MinorRoad);
+        let path = HashSet::from([(10, 0)]);
+        let spots: Vec<Span> = beside_run(&canvas, &path, span(0, 10, 11), 3).collect();
+        assert_eq!(spots, [span(0, 14, 17)]);
+    }
+
+    #[test]
+    fn text_beside_a_road_does_not_skip_a_crossing_road() {
+        let mut canvas = Canvas::new(20, 1);
+        canvas.set_dot(20, 0, Class::MinorRoad);
+        canvas.set_dot(24, 0, Class::MinorRoad);
+        let path = HashSet::from([(10, 0)]);
+        let spots: Vec<Span> = beside_run(&canvas, &path, span(0, 10, 11), 3).collect();
+        assert_eq!(spots, [span(0, 6, 9)]);
+    }
+
+    #[test]
+    fn text_beside_a_road_keeps_two_blank_cells_on_the_far_side() {
+        let mut canvas = Canvas::new(20, 1);
+        canvas.set_dot(20, 0, Class::MinorRoad);
+        canvas.set_dot(34, 0, Class::MinorRoad);
+        canvas.set_dot(8, 0, Class::MinorRoad);
+        let path = HashSet::from([(10, 0)]);
+        let spots: Vec<Span> = beside_run(&canvas, &path, span(0, 10, 11), 3).collect();
+        assert_eq!(spots, [span(0, 12, 15)]);
     }
 
     #[test]
@@ -576,13 +820,16 @@ mod tests {
     }
 
     #[test]
-    fn padded_spans_keep_a_free_cell_between_labels() {
-        assert!(span(0, 5, 8).padded().overlaps(&span(0, 8, 10)));
+    fn span_needs_a_free_cell_beside_other_labels() {
+        assert!(span(0, 5, 8).crowds(&span(0, 8, 10), 0));
+        assert!(!span(0, 5, 8).crowds(&span(0, 9, 10), 0));
     }
 
     #[test]
-    fn spans_on_other_rows_do_not_overlap() {
-        assert!(!span(0, 5, 8).padded().overlaps(&span(1, 5, 8)));
+    fn spans_on_other_rows_crowd_only_within_the_free_rows() {
+        assert!(!span(0, 5, 8).crowds(&span(1, 5, 8), 0));
+        assert!(span(0, 5, 8).crowds(&span(1, 5, 8), 1));
+        assert!(!span(0, 5, 8).crowds(&span(2, 5, 8), 1));
     }
 
     #[test]
@@ -599,6 +846,46 @@ mod tests {
 
     #[test]
     fn point_spots_center_the_text_on_the_point() {
-        assert_eq!(point_spots((21.0, 9.0), 4, 10)[0], span(2, 8, 12));
+        assert_eq!(
+            point_spots((21.0, 9.0), &[("Roma", 4)], 10)[0],
+            [(span(2, 8, 12), "Roma")]
+        );
+    }
+
+    #[test]
+    fn wrap_splits_at_the_space_that_makes_the_longer_line_shortest() {
+        assert_eq!(
+            wrap("Piazza Guglielmo Oberdan"),
+            Some([
+                ("Piazza Guglielmo".to_owned(), 16),
+                ("Oberdan".to_owned(), 7)
+            ])
+        );
+    }
+
+    #[test]
+    fn wrap_needs_a_space() {
+        assert_eq!(wrap("Milano"), None);
+    }
+
+    #[test]
+    fn place_name_wider_than_the_map_goes_on_two_lines() {
+        let town = place_named("town", "San Giuliano Milanese", 10, 2);
+        assert_eq!(
+            labels(&[&town], 5.0),
+            [
+                label(4, 1, "San Giuliano", LabelClass::Town),
+                label(6, 2, "Milanese", LabelClass::Town),
+            ]
+        );
+    }
+
+    #[test]
+    fn road_name_stays_on_one_line() {
+        let found = road(
+            vec![("class", string("primary")), ("name", string("Via Roma"))],
+            line(&[(0, 10), (39, 10)]),
+        );
+        assert_eq!(found[0].wrapped, None);
     }
 }

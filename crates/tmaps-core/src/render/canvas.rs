@@ -116,6 +116,15 @@ impl Canvas {
         })
     }
 
+    pub(super) fn cell(&self, column: u16, row: u16) -> Option<Cell> {
+        if column >= self.width {
+            return None;
+        }
+        self.cells
+            .get(usize::from(row) * usize::from(self.width) + usize::from(column))
+            .copied()
+    }
+
     fn cell_mut(&mut self, column: u16, row: u16) -> Option<&mut Cell> {
         if column >= self.width || row >= self.height {
             return None;
