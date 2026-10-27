@@ -65,7 +65,7 @@ const HELP: [HelpGroup; 4] = [
     (
         "Places",
         &[
-            ("/", "search"),
+            ("/", "search, @name: saved places"),
             ("m", "save the place at +"),
             ("'", "go to a saved place"),
             ("Ctrl-U", "clear the typed text"),
@@ -908,6 +908,7 @@ fn prompt_view(
 ) -> PromptView {
     match prompt {
         Prompt::Search(search) => {
+            let saved = search.text.trim().starts_with('@');
             let note = if !search.results.is_empty() {
                 None
             } else if let Some(error) = &search.error {
@@ -916,9 +917,16 @@ fn prompt_view(
                 Some((format!("{spinner} Searching…"), Style::new()))
             } else if search.text.trim().is_empty() {
                 Some((
-                    "Type a place or an address. Enter: go there.".to_owned(),
+                    "Type a place, an address, or @name. Enter: go there.".to_owned(),
                     Style::new(),
                 ))
+            } else if saved && app.places().is_empty() {
+                Some((
+                    "No saved places. m: save the place at +".to_owned(),
+                    Style::new(),
+                ))
+            } else if saved {
+                Some(("No saved place matches.".to_owned(), Style::new()))
             } else {
                 Some(("No places found.".to_owned(), Style::new()))
             };
@@ -1286,6 +1294,7 @@ fn draw_help(frame: &mut Frame, scroll: usize, palette: Palette, area: Rect) -> 
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeMap;
     use std::time::Instant;
 
     use ratatui::Terminal;
@@ -1684,6 +1693,29 @@ mod tests {
     fn empty_place_list_tells_how_to_save_a_place() {
         let mut app = App::new(View::new(LatLon::new(45.4642, 9.19).unwrap(), 14.0));
         type_keys(&mut app, "'");
+        assert!(screen(80, 24, &app).contains("No saved places."));
+    }
+
+    #[test]
+    fn empty_search_tells_about_saved_places() {
+        let mut app = App::new(View::new(LatLon::new(45.4642, 9.19).unwrap(), 14.0));
+        type_keys(&mut app, "/");
+        assert!(screen(80, 24, &app).contains("or @name. Enter: go there."));
+    }
+
+    #[test]
+    fn at_sign_without_a_match_says_so() {
+        let mut app = App::new(View::new(LatLon::new(45.4642, 9.19).unwrap(), 14.0)).with_places(
+            BTreeMap::from([("home".to_owned(), LatLon::new(45.4642, 9.19).unwrap())]),
+        );
+        type_keys(&mut app, "/@xyz");
+        assert!(screen(80, 24, &app).contains("No saved place matches."));
+    }
+
+    #[test]
+    fn at_sign_without_places_tells_how_to_save_a_place() {
+        let mut app = App::new(View::new(LatLon::new(45.4642, 9.19).unwrap(), 14.0));
+        type_keys(&mut app, "/@");
         assert!(screen(80, 24, &app).contains("No saved places."));
     }
 

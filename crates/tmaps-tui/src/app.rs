@@ -316,6 +316,11 @@ impl App {
                     until: Some(now + INFO_TIME),
                 });
                 self.places.insert(name, location);
+                if let Some(Prompt::Search(search)) = &mut self.prompt
+                    && let Some(query) = search.text.trim().strip_prefix('@')
+                {
+                    search.results = saved_places(&self.places, query);
+                }
             }
             Message::SaveFailed(error) => {
                 self.notice = Some(Notice {
@@ -575,9 +580,13 @@ impl App {
             text: std::mem::take(&mut search.text),
             ..Search::default()
         };
-        if search.text.trim().is_empty() {
+        let text = search.text.trim();
+        if text.is_empty() || text.starts_with('@') {
             if pending {
                 self.requests.push(Request::CancelSearch);
+            }
+            if let Some(name) = text.strip_prefix('@') {
+                search.results = saved_places(&self.places, name);
             }
             return;
         }
@@ -697,6 +706,28 @@ impl App {
         let (width, height) = self.map_size_dots();
         self.view = self.view.pan(x * width, y * height);
     }
+}
+
+fn saved_places(places: &BTreeMap<String, LatLon>, query: &str) -> Vec<Place> {
+    let query = query.to_lowercase();
+    let (starts, contains): (Vec<_>, Vec<_>) = places
+        .iter()
+        .map(|(name, location)| (name.to_lowercase(), name, *location))
+        .filter(|(lower, ..)| lower.contains(&query))
+        .partition(|(lower, ..)| lower.starts_with(&query));
+    starts
+        .into_iter()
+        .chain(contains)
+        .map(|(_, name, location)| Place {
+            label: format!("@{name}"),
+            name: Some(name.clone()),
+            location,
+            category: None,
+            country_code: None,
+            kind: None,
+            extent: None,
+        })
+        .collect()
 }
 
 fn place_view(place: &Place, width: f64, height: f64) -> View {
@@ -1412,6 +1443,98 @@ mod tests {
         key(&mut app, KeyCode::Down);
         key(&mut app, KeyCode::Enter);
         assert_eq!(app.view(), View::new(rome, 15.0));
+    }
+
+    fn app_with_places(names: &[&str]) -> App {
+        let places = names
+            .iter()
+            .map(|name| ((*name).to_owned(), milan()))
+            .collect();
+        ready_app().with_places(places)
+    }
+
+    fn result_labels(app: &App) -> Vec<String> {
+        let Some(Prompt::Search(search)) = app.prompt() else {
+            panic!("the search is not open");
+        };
+        search
+            .results
+            .iter()
+            .map(|place| place.label.clone())
+            .collect()
+    }
+
+    #[test]
+    fn at_sign_lists_the_saved_places_that_start_with_the_text_first() {
+        let mut app = app_with_places(&["home", "office", "omega", "rome"]);
+        key(&mut app, KeyCode::Char('/'));
+        type_text(&mut app, "@om");
+        assert_eq!(result_labels(&app), ["@omega", "@home", "@rome"]);
+    }
+
+    #[test]
+    fn at_sign_matches_the_saved_places_without_case() {
+        let mut app = app_with_places(&["Home", "work"]);
+        key(&mut app, KeyCode::Char('/'));
+        type_text(&mut app, "@hO");
+        assert_eq!(result_labels(&app), ["@Home"]);
+    }
+
+    #[test]
+    fn bare_at_sign_lists_all_saved_places() {
+        let mut app = app_with_places(&["home", "work"]);
+        key(&mut app, KeyCode::Char('/'));
+        type_text(&mut app, "@");
+        assert_eq!(result_labels(&app), ["@home", "@work"]);
+    }
+
+    #[test]
+    fn at_sign_sends_no_search_request() {
+        let mut app = app_with_places(&["home"]);
+        key(&mut app, KeyCode::Char('/'));
+        app.take_requests();
+        type_text(&mut app, "@home");
+        assert_eq!(app.take_requests(), []);
+    }
+
+    #[test]
+    fn open_at_sign_search_shows_a_place_saved_later() {
+        let mut app = ready_app();
+        key(&mut app, KeyCode::Char('/'));
+        type_text(&mut app, "@");
+        app.receive(
+            Message::PlaceSaved("home".to_owned(), milan()),
+            Instant::now(),
+        );
+        assert_eq!(result_labels(&app), ["@home"]);
+    }
+
+    #[test]
+    fn new_at_sign_text_selects_the_first_saved_place() {
+        let rome = LatLon::new(41.9, 12.5).unwrap();
+        let mut app = ready_app().with_places(BTreeMap::from([
+            ("home".to_owned(), milan()),
+            ("rome".to_owned(), rome),
+        ]));
+        key(&mut app, KeyCode::Char('/'));
+        type_text(&mut app, "@");
+        key(&mut app, KeyCode::Down);
+        type_text(&mut app, "r");
+        key(&mut app, KeyCode::Enter);
+        assert_eq!(app.view(), View::new(rome, PLACE_ZOOM));
+    }
+
+    #[test]
+    fn enter_goes_to_the_saved_place_from_the_search() {
+        let rome = LatLon::new(41.9, 12.5).unwrap();
+        let mut app = ready_app().with_places(BTreeMap::from([
+            ("home".to_owned(), milan()),
+            ("rome".to_owned(), rome),
+        ]));
+        key(&mut app, KeyCode::Char('/'));
+        type_text(&mut app, "@ro");
+        key(&mut app, KeyCode::Enter);
+        assert_eq!(app.view(), View::new(rome, PLACE_ZOOM));
     }
 
     #[test]
