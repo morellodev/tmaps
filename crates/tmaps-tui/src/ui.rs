@@ -15,6 +15,7 @@ use tmaps_core::LatLon;
 use tmaps_core::config::Units;
 use tmaps_core::format::{distance, duration};
 use tmaps_core::geocode::Place;
+use tmaps_core::places::validate_name;
 use tmaps_core::render::{Canvas, Class, DOTS_PER_CELL_X, DOTS_PER_CELL_Y, View, cursor_cell};
 use tmaps_core::routing::{Maneuver, Mode, Route, Step};
 
@@ -68,6 +69,7 @@ const HELP: [HelpGroup; 4] = [
             ("/", "search, @name: saved places"),
             ("m", "save the place at +"),
             ("@  '", "go to a saved place"),
+            ("Ctrl-D", "remove a saved place"),
             ("Ctrl-U", "clear the typed text"),
             ("Ctrl-W", "remove the last word"),
         ],
@@ -825,6 +827,15 @@ fn hints(app: &App, status: Status) -> &'static [Hint] {
         return &[("Esc", "close")];
     }
     match app.prompt() {
+        Some(Prompt::Search(search)) if search.removing.is_some() => {
+            &[("Enter", "remove"), ("Esc", "keep")]
+        }
+        Some(Prompt::Search(search)) if search.text.trim().starts_with('@') => &[
+            ("↑↓", "select"),
+            ("Enter", "go"),
+            ("Ctrl-D", "remove"),
+            ("Esc", "close"),
+        ],
         Some(Prompt::Search(_)) => &[("↑↓", "select"), ("Enter", "go"), ("Esc", "close")],
         Some(Prompt::SavePlace { .. }) => &[("Enter", "save"), ("Esc", "cancel")],
         None if app.trip().is_empty() => &[
@@ -907,7 +918,12 @@ fn prompt_view(
     match prompt {
         Prompt::Search(search) => {
             let saved = search.text.trim().starts_with('@');
-            let note = if !search.results.is_empty() {
+            let note = if let Some(name) = &search.removing {
+                Some((
+                    format!("Remove @{name}? Enter: remove. Esc: keep."),
+                    palette.error(),
+                ))
+            } else if !search.results.is_empty() {
                 None
             } else if let Some(error) = &search.error {
                 Some((format!("✗ {error} Type to try again."), palette.error()))
@@ -952,6 +968,13 @@ fn prompt_view(
             note: Some(if *invalid {
                 (
                     "✗ Not a valid name. Use letters, digits, '-', and '_'.".to_owned(),
+                    palette.error(),
+                )
+            } else if let Ok(existing) = validate_name(name)
+                && app.places().contains_key(existing)
+            {
+                (
+                    format!("@{existing} exists. Enter: replace it."),
                     palette.error(),
                 )
             } else {
@@ -1582,8 +1605,8 @@ mod tests {
 
     #[test]
     fn help_overflow_counts_the_hidden_rows() {
-        // 17 rows of keys, and 11 visible rows: 13 above the status line, less the borders.
-        assert_eq!(help_overflow(44, 14), 6);
+        // 18 rows of keys, and 11 visible rows: 13 above the status line, less the borders.
+        assert_eq!(help_overflow(44, 14), 7);
     }
 
     fn type_keys(app: &mut App, keys: &str) {
@@ -1691,6 +1714,31 @@ mod tests {
         );
         type_keys(&mut app, "/@xyz");
         assert!(screen(80, 24, &app).contains("No saved place matches."));
+    }
+
+    fn app_with_home() -> App {
+        App::new(View::new(LatLon::new(45.4642, 9.19).unwrap(), 14.0)).with_places(BTreeMap::from(
+            [("home".to_owned(), LatLon::new(45.4642, 9.19).unwrap())],
+        ))
+    }
+
+    #[test]
+    fn removal_asks_in_the_search_box() {
+        let mut app = app_with_home();
+        type_keys(&mut app, "'");
+        app.handle(&Event::Key(KeyEvent::new(
+            KeyCode::Char('d'),
+            KeyModifiers::CONTROL,
+        )));
+        let text = screen(80, 24, &app);
+        assert!(text.contains("▶ @home") && text.contains("Remove @home? Enter: remove."));
+    }
+
+    #[test]
+    fn save_prompt_warns_about_an_existing_name() {
+        let mut app = app_with_home();
+        type_keys(&mut app, "mhome");
+        assert!(screen(80, 24, &app).contains("@home exists. Enter: replace it."));
     }
 
     #[test]

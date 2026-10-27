@@ -49,6 +49,9 @@ pub enum Request {
         name: String,
         location: LatLon,
     },
+    RemovePlace {
+        name: String,
+    },
 }
 
 /// Sends requests to the geocoder and the router in background tasks.
@@ -134,7 +137,19 @@ impl Services {
                 tokio::task::spawn_blocking(move || {
                     let message = match places::add(&config_file, &name, location) {
                         Ok(()) => Message::PlaceSaved(name, location),
-                        Err(error) => Message::SaveFailed(format!("Cannot save @{name}: {error}")),
+                        Err(error) => Message::PlaceFailed(format!("Cannot save @{name}: {error}")),
+                    };
+                    let _ = sender.send(message);
+                });
+            }
+            Request::RemovePlace { name } => {
+                let config_file = Arc::clone(&self.config_file);
+                tokio::task::spawn_blocking(move || {
+                    let message = match places::remove(&config_file, &name) {
+                        Ok(()) => Message::PlaceRemoved(name),
+                        Err(error) => {
+                            Message::PlaceFailed(format!("Cannot remove @{name}: {error}"))
+                        }
                     };
                     let _ = sender.send(message);
                 });
