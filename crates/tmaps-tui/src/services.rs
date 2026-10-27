@@ -146,7 +146,8 @@ impl Services {
                 let config_file = Arc::clone(&self.config_file);
                 tokio::task::spawn_blocking(move || {
                     let message = match places::remove(&config_file, &name) {
-                        Ok(()) => Message::PlaceRemoved(name),
+                        // The file has no such place, so the place must leave the list too.
+                        Ok(()) | Err(Error::InvalidInput(_)) => Message::PlaceRemoved(name),
                         Err(error) => {
                             Message::PlaceFailed(format!("Cannot remove @{name}: {error}"))
                         }
@@ -219,6 +220,8 @@ fn search_key(text: &str, near: LatLon) -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::assert_matches;
+
     use wiremock::matchers::method;
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
@@ -263,6 +266,25 @@ mod tests {
         let second = tokio::time::timeout(timeout, next_route()).await.unwrap();
         let requests = server.received_requests().await.unwrap().len();
         assert_eq!((first, second, requests), (1, 3, 2));
+    }
+
+    #[tokio::test]
+    async fn removal_of_a_place_that_the_file_does_not_have_succeeds() {
+        let directory = tempfile::tempdir().unwrap();
+        let client = tmaps_core::http::client().unwrap();
+        let (sender, mut receiver) = mpsc::unbounded_channel();
+        let services = Services::new(
+            Photon::new(client.clone(), "http://localhost"),
+            Valhalla::new(client, "http://localhost"),
+            "en",
+            directory.path().join("config.toml"),
+            sender,
+        );
+        services.send(Request::RemovePlace {
+            name: "home".to_owned(),
+        });
+        let message = tokio::time::timeout(Duration::from_secs(5), receiver.recv()).await;
+        assert_matches!(message.unwrap(), Some(Message::PlaceRemoved(name)) if name == "home");
     }
 
     #[test]

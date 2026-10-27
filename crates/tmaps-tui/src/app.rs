@@ -121,7 +121,6 @@ impl App {
         }
     }
 
-    /// The saved places that a search for `@` lists.
     #[must_use]
     pub fn with_places(mut self, places: BTreeMap<String, LatLon>) -> Self {
         self.places = places;
@@ -481,7 +480,7 @@ impl App {
             KeyCode::Char(']') => self.show_step(1),
             KeyCode::Char('[') => self.show_step(-1),
             KeyCode::Char('/') => self.open(Prompt::Search(Search::default())),
-            KeyCode::Char('m') => self.open_save_place(self.view.center(), None),
+            KeyCode::Char('m') => self.open_save_place(self.view.center(), None, None),
             KeyCode::Char('@' | '\'') => self.open_saved_places(),
             _ => return false,
         }
@@ -493,38 +492,39 @@ impl App {
             self.quit = true;
             return true;
         }
-        if key.code == KeyCode::Esc {
-            if let Some(Prompt::Search(search)) = &mut self.prompt
-                && search.removing.take().is_some()
-            {
-                return true;
+        // A key that only cancels the question still changes the screen.
+        match self.prompt.as_mut().and_then(Prompt::take_removal) {
+            Some(name) if key.code == KeyCode::Enter => {
+                self.requests.push(Request::RemovePlace { name });
             }
-            self.close_prompt();
-            return true;
+            Some(_) if key.code == KeyCode::Esc => {}
+            Some(_) => {
+                self.on_prompt_input(key);
+            }
+            None if key.code == KeyCode::Esc => self.leave_prompt(),
+            None => return self.on_prompt_input(key),
         }
+        true
+    }
+
+    fn on_prompt_input(&mut self, key: KeyEvent) -> bool {
         let (width, height) = self.map_size_dots();
         let Some(prompt) = &mut self.prompt else {
             return false;
         };
         match prompt {
             Prompt::Search(search) => {
-                let removing = search.removing.take();
-                // A key that only cancels the question still changes the screen.
-                let asked = removing.is_some();
                 let control = key.modifiers.contains(KeyModifiers::CONTROL);
-                let saved = search.text.trim().starts_with('@');
-                if let Some(name) = removing
-                    && key.code == KeyCode::Enter
-                {
-                    self.requests.push(Request::RemovePlace { name });
-                } else if key.code == KeyCode::Char('d') && control && saved {
+                let saved = search.saved_query().is_some();
+                if key.code == KeyCode::Char('d') && control && saved {
                     search.removing = search.chosen().and_then(|place| place.name.clone());
                 } else if key.code == KeyCode::Char('s') && control && !saved {
                     let Some(place) = search.chosen() else {
-                        return asked;
+                        return false;
                     };
                     let (location, label) = (place.location, place.label.clone());
-                    self.open_save_place(location, Some(label));
+                    let search = std::mem::take(search);
+                    self.open_save_place(location, Some(label), Some(search));
                 } else if key.code == KeyCode::Enter {
                     let view = search
                         .chosen()
@@ -537,7 +537,7 @@ impl App {
                 } else if prompt::edit(&mut search.text, key) {
                     self.request_search();
                 } else {
-                    return asked;
+                    return false;
                 }
             }
             Prompt::SavePlace {
@@ -566,11 +566,20 @@ impl App {
     }
 
     fn refresh_saved_places(&mut self) {
-        if let Some(Prompt::Search(search)) = &mut self.prompt
-            && let Some(query) = search.text.trim().strip_prefix('@')
+        let Some(Prompt::Search(search)) = &mut self.prompt else {
+            return;
+        };
+        if let Some(results) = search
+            .saved_query()
+            .map(|query| saved_places(&self.places, query))
         {
-            search.results = saved_places(&self.places, query);
-            search.selected = search.selected.min(search.results.len().saturating_sub(1));
+            let chosen = search.chosen().and_then(|place| place.name.clone());
+            search.results = results;
+            search.selected = search
+                .results
+                .iter()
+                .position(|place| place.name == chosen)
+                .unwrap_or_else(|| search.selected.min(search.results.len().saturating_sub(1)));
             search
                 .removing
                 .take_if(|name| !self.places.contains_key(name));
@@ -616,14 +625,14 @@ impl App {
             text: std::mem::take(&mut search.text),
             ..Search::default()
         };
-        let text = search.text.trim();
-        if text.is_empty() || text.starts_with('@') {
+        let saved = search
+            .saved_query()
+            .map(|query| saved_places(&self.places, query));
+        if search.text.trim().is_empty() || saved.is_some() {
             if pending {
                 self.requests.push(Request::CancelSearch);
             }
-            if let Some(name) = text.strip_prefix('@') {
-                search.results = saved_places(&self.places, name);
-            }
+            search.results = saved.unwrap_or_default();
             return;
         }
         self.last_search += 1;
@@ -635,14 +644,28 @@ impl App {
         });
     }
 
-    fn open_save_place(&mut self, location: LatLon, label: Option<String>) {
+    fn open_save_place(&mut self, location: LatLon, label: Option<String>, search: Option<Search>) {
         self.close_prompt();
         self.open(Prompt::SavePlace {
             name: String::new(),
             invalid: false,
             location: rounded(location),
             label,
+            search,
         });
+    }
+
+    fn leave_prompt(&mut self) {
+        match self.prompt.take() {
+            Some(Prompt::SavePlace {
+                search: Some(search),
+                ..
+            }) => self.prompt = Some(Prompt::Search(search)),
+            prompt => {
+                self.prompt = prompt;
+                self.close_prompt();
+            }
+        }
     }
 
     fn save_place(&mut self, name: String, location: LatLon) {
@@ -708,10 +731,11 @@ impl App {
             MouseEventKind::ScrollDown => KeyCode::Down,
             MouseEventKind::Down(MouseButton::Left) => {
                 // Else a click on the selected row turns into an Enter that confirms the removal.
-                let asked = match &mut self.prompt {
-                    Some(Prompt::Search(search)) => search.removing.take().is_some(),
-                    _ => false,
-                };
+                let asked = self
+                    .prompt
+                    .as_mut()
+                    .and_then(Prompt::take_removal)
+                    .is_some();
                 let item = self
                     .regions
                     .prompt_items
@@ -1400,6 +1424,27 @@ mod tests {
     }
 
     #[test]
+    fn esc_in_the_name_box_goes_back_to_the_search() {
+        let mut app = app_with_results();
+        key(&mut app, KeyCode::Down);
+        app.handle(&press(KeyCode::Char('s'), KeyModifiers::CONTROL));
+        key(&mut app, KeyCode::Esc);
+        assert_matches!(
+            app.prompt(),
+            Some(Prompt::Search(search)) if search.text == "Roma" && search.selected == 1
+        );
+        assert_eq!(result_labels(&app), ["Roma, Lazio", "Roma, Texas"]);
+    }
+
+    #[test]
+    fn esc_in_the_name_box_of_the_crosshair_closes_it() {
+        let mut app = ready_app();
+        key(&mut app, KeyCode::Char('m'));
+        key(&mut app, KeyCode::Esc);
+        assert!(app.prompt().is_none());
+    }
+
+    #[test]
     fn saved_place_joins_the_list() {
         let mut app = ready_app();
         app.receive(
@@ -1722,6 +1767,32 @@ mod tests {
         key(&mut app, KeyCode::Char('/'));
         type_text(&mut app, "@om");
         assert_eq!(result_labels(&app), ["@omega", "@home", "@rome"]);
+    }
+
+    #[test]
+    fn spaces_after_the_at_sign_change_nothing() {
+        let mut app = app_with_places(&["home", "work"]);
+        key(&mut app, KeyCode::Char('/'));
+        type_text(&mut app, "@ ho");
+        assert_eq!(result_labels(&app), ["@home"]);
+    }
+
+    #[test]
+    fn a_new_saved_place_keeps_the_selected_place() {
+        let mut app = app_with_places(&["home", "work"]);
+        key(&mut app, KeyCode::Char('\''));
+        key(&mut app, KeyCode::Down);
+        app.receive(
+            Message::PlaceSaved("bar".to_owned(), milan()),
+            Instant::now(),
+        );
+        let Some(Prompt::Search(search)) = app.prompt() else {
+            panic!("the search is not open");
+        };
+        assert_eq!(
+            search.chosen().map(|place| place.label.as_str()),
+            Some("@work")
+        );
     }
 
     #[test]
