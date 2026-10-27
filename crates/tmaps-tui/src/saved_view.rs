@@ -4,6 +4,7 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 use tmaps_core::LatLon;
+use tmaps_core::file::write_atomically;
 use tmaps_core::render::View;
 
 const FILE_NAME: &str = "view.toml";
@@ -32,8 +33,7 @@ pub fn save(state_dir: &Path, view: View) -> io::Result<()> {
         zoom: view.zoom(),
     };
     let text = toml::to_string(&saved).map_err(io::Error::other)?;
-    fs::create_dir_all(state_dir)?;
-    fs::write(state_dir.join(FILE_NAME), text)
+    write_atomically(&state_dir.join(FILE_NAME), text.as_bytes())
 }
 
 /// A missing or invalid file gives `None`: the next quit writes a valid one.

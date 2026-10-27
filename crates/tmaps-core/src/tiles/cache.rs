@@ -4,12 +4,14 @@
 //! The cache only makes loads faster, so I/O errors count as a miss instead of a failure.
 
 use std::fs::{self, File};
-use std::io::{self, Write};
+use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use sha2::{Digest, Sha256};
+
+use crate::file::write_atomically;
 
 /// Size limit of the tile cache.
 pub const DEFAULT_CACHE_BYTES: u64 = 500 * 1024 * 1024;
@@ -106,16 +108,6 @@ fn read_entry(path: &Path) -> io::Result<Entry> {
         body: contents,
         expires,
     })
-}
-
-/// Another tmaps process can read the same file, so the write goes to a temporary file first.
-fn write_atomically(path: &Path, contents: &[u8]) -> io::Result<()> {
-    let parent = path.parent().ok_or(io::ErrorKind::InvalidInput)?;
-    fs::create_dir_all(parent)?;
-    let mut temp = tempfile::NamedTempFile::new_in(parent)?;
-    temp.write_all(contents)?;
-    temp.persist(path).map_err(|error| error.error)?;
-    Ok(())
 }
 
 fn evict(root: &Path, max_bytes: u64) -> io::Result<()> {
