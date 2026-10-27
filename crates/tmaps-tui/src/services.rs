@@ -59,7 +59,7 @@ pub struct Services {
     lang: Arc<str>,
     config_file: Arc<PathBuf>,
     sender: mpsc::UnboundedSender<Message>,
-    /// A new route request aborts the last one, also while it waits for the router throttle.
+    /// The next route request aborts it, also inside the router throttle.
     route_task: Mutex<Option<AbortHandle>>,
     last_search: Arc<AtomicU64>,
     searches: Arc<Mutex<LruCache<String, Vec<Place>>>>,

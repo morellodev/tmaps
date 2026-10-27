@@ -25,21 +25,18 @@ use crate::regions::{ListRegion, Regions};
 use crate::trip::{Routes, Trip, Waypoint};
 
 const STATUS_HEIGHT: u16 = 1;
-/// The side panel takes a quarter of the terminal, in these bounds.
 const PANEL_MIN_WIDTH: u16 = 40;
 const PANEL_MAX_WIDTH: u16 = 56;
 const DRAWER_MIN_HEIGHT: u16 = 6;
 const DRAWER_MAX_HEIGHT: u16 = 12;
 /// A drawer that leaves the map fewer rows hides, and the status line shows the route.
 const MAP_MIN_HEIGHT: u16 = 8;
-/// The summary in a drawer is at most as wide as in the narrowest side panel.
 const SUMMARY_WIDTH: u16 = PANEL_MIN_WIDTH - 4;
 /// A narrower drawer puts the steps under the summary.
 const DRAWER_SUMMARY_MIN_WIDTH: u16 = 24;
 const STEPS_MIN_HEIGHT: u16 = 3;
 /// Narrower terminals get the panel as a drawer below the map, so the map keeps its width.
 const SIDE_PANEL_MIN_WIDTH: u16 = 100;
-/// The prompt takes half of the map, in these bounds.
 const PROMPT_MIN_WIDTH: u16 = 60;
 const PROMPT_MAX_WIDTH: u16 = 100;
 /// A smaller terminal gets only a request for more room.
