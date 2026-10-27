@@ -145,12 +145,10 @@ impl TileSource {
 
     /// `None` means that the server has no content at `url` (HTTP 204 or 404).
     async fn get_cached(&self, url: &str) -> Result<Option<Vec<u8>>> {
-        let cached = self.cache.get(url).await;
-        if let Some(entry) = &cached
-            && entry.is_fresh()
-        {
-            return Ok(Some(entry.body.clone()));
-        }
+        let cached = match self.cache.get(url).await {
+            Some(entry) if entry.is_fresh() => return Ok(Some(entry.body)),
+            cached => cached,
+        };
         match self.get(url).await {
             Ok(Some((body, max_age))) => {
                 if let Some(max_age) = max_age {
