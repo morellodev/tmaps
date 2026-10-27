@@ -26,6 +26,8 @@ pub struct Search {
     /// The number of the last search request, until its results arrive.
     pub pending: Option<u64>,
     pub error: Option<String>,
+    /// The saved place to remove when the user confirms.
+    pub removing: Option<String>,
 }
 
 impl Search {

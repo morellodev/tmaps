@@ -316,13 +316,18 @@ impl App {
                     until: Some(now + INFO_TIME),
                 });
                 self.places.insert(name, location);
-                if let Some(Prompt::Search(search)) = &mut self.prompt
-                    && let Some(query) = search.text.trim().strip_prefix('@')
-                {
-                    search.results = saved_places(&self.places, query);
-                }
+                self.refresh_saved_places();
             }
-            Message::SaveFailed(error) => {
+            Message::PlaceRemoved(name) => {
+                self.notice = Some(Notice {
+                    level: Level::Info,
+                    text: format!("Removed @{name}"),
+                    until: Some(now + INFO_TIME),
+                });
+                self.places.remove(&name);
+                self.refresh_saved_places();
+            }
+            Message::PlaceFailed(error) => {
                 self.notice = Some(Notice {
                     level: Level::Error,
                     text: error,
@@ -492,6 +497,11 @@ impl App {
             return true;
         }
         if key.code == KeyCode::Esc {
+            if let Some(Prompt::Search(search)) = &mut self.prompt
+                && search.removing.take().is_some()
+            {
+                return true;
+            }
             self.close_prompt();
             return true;
         }
@@ -501,7 +511,18 @@ impl App {
         };
         match prompt {
             Prompt::Search(search) => {
-                if key.code == KeyCode::Enter {
+                let removing = search.removing.take();
+                let control = key.modifiers.contains(KeyModifiers::CONTROL);
+                if let Some(name) = removing
+                    && key.code == KeyCode::Enter
+                {
+                    self.requests.push(Request::RemovePlace { name });
+                } else if key.code == KeyCode::Char('d')
+                    && control
+                    && search.text.trim().starts_with('@')
+                {
+                    search.removing = search.chosen().and_then(|place| place.name.clone());
+                } else if key.code == KeyCode::Enter {
                     let view = search
                         .chosen()
                         .map(|place| place_view(place, width, height));
@@ -533,6 +554,18 @@ impl App {
             }
         }
         true
+    }
+
+    fn refresh_saved_places(&mut self) {
+        if let Some(Prompt::Search(search)) = &mut self.prompt
+            && let Some(query) = search.text.trim().strip_prefix('@')
+        {
+            search.results = saved_places(&self.places, query);
+            search.selected = search.selected.min(search.results.len().saturating_sub(1));
+            search
+                .removing
+                .take_if(|name| !self.places.contains_key(name));
+        }
     }
 
     fn open_saved_places(&mut self) {
@@ -656,6 +689,10 @@ impl App {
             MouseEventKind::ScrollUp => KeyCode::Up,
             MouseEventKind::ScrollDown => KeyCode::Down,
             MouseEventKind::Down(MouseButton::Left) => {
+                // Else a click on the selected row turns into an Enter that confirms the removal.
+                if let Some(Prompt::Search(search)) = &mut self.prompt {
+                    search.removing = None;
+                }
                 let item = self
                     .regions
                     .prompt_items
@@ -1333,7 +1370,7 @@ mod tests {
     fn next_key_clears_the_search_error() {
         let mut app = ready_app();
         app.receive(
-            Message::SaveFailed("cannot save @work".to_owned()),
+            Message::PlaceFailed("cannot save @work".to_owned()),
             Instant::now(),
         );
         key(&mut app, KeyCode::Right);
@@ -1386,6 +1423,128 @@ mod tests {
         assert!(!app.help());
     }
 
+    fn removing(app: &App) -> Option<String> {
+        let Some(Prompt::Search(search)) = app.prompt() else {
+            panic!("the search is not open");
+        };
+        search.removing.clone()
+    }
+
+    fn ctrl_d(app: &mut App) {
+        app.handle(&press(KeyCode::Char('d'), KeyModifiers::CONTROL));
+    }
+
+    #[test]
+    fn ctrl_d_asks_before_it_removes_a_saved_place() {
+        let mut app = app_with_places(&["home", "work"]);
+        key(&mut app, KeyCode::Char('\''));
+        key(&mut app, KeyCode::Down);
+        ctrl_d(&mut app);
+        assert_eq!(
+            (removing(&app), app.take_requests()),
+            (Some("work".to_owned()), Vec::new())
+        );
+    }
+
+    #[test]
+    fn enter_confirms_the_removal_and_keeps_the_search_open() {
+        let mut app = app_with_places(&["home"]);
+        key(&mut app, KeyCode::Char('\''));
+        ctrl_d(&mut app);
+        key(&mut app, KeyCode::Enter);
+        assert_eq!(
+            app.take_requests(),
+            [Request::RemovePlace {
+                name: "home".to_owned()
+            }]
+        );
+        assert_eq!(removing(&app), None);
+    }
+
+    #[test]
+    fn esc_keeps_the_saved_place_and_the_search() {
+        let mut app = app_with_places(&["home"]);
+        key(&mut app, KeyCode::Char('\''));
+        ctrl_d(&mut app);
+        key(&mut app, KeyCode::Esc);
+        assert_eq!((removing(&app), app.take_requests()), (None, Vec::new()));
+    }
+
+    #[test]
+    fn another_key_cancels_the_removal() {
+        let mut app = app_with_places(&["home", "work"]);
+        key(&mut app, KeyCode::Char('\''));
+        ctrl_d(&mut app);
+        key(&mut app, KeyCode::Down);
+        assert_eq!(removing(&app), None);
+    }
+
+    #[test]
+    fn ctrl_d_in_a_place_search_removes_nothing() {
+        let mut app = ready_app();
+        key(&mut app, KeyCode::Char('/'));
+        type_text(&mut app, "Roma");
+        let id = last_search(&mut app);
+        app.receive(
+            Message::SearchResults(id, Ok(vec![place("Roma", 41.9, 12.5)])),
+            Instant::now(),
+        );
+        ctrl_d(&mut app);
+        assert_eq!(removing(&app), None);
+    }
+
+    #[test]
+    fn click_on_the_selected_place_does_not_confirm_the_removal() {
+        let mut app = app_with_places(&["home", "work"]);
+        key(&mut app, KeyCode::Char('\''));
+        app.set_regions(Regions {
+            prompt_items: Some(ListRegion {
+                area: Rect::new(20, 3, 58, 2),
+                offset: 0,
+                heights: vec![1, 1],
+            }),
+            ..app.regions.clone()
+        });
+        ctrl_d(&mut app);
+        app.handle(&mouse(MouseEventKind::Down(MouseButton::Left), 30, 3));
+        assert!(
+            !app.take_requests()
+                .iter()
+                .any(|request| matches!(request, Request::RemovePlace { .. }))
+        );
+    }
+
+    #[test]
+    fn question_about_a_removed_place_goes_away() {
+        let mut app = app_with_places(&["home", "work"]);
+        key(&mut app, KeyCode::Char('\''));
+        ctrl_d(&mut app);
+        app.receive(Message::PlaceRemoved("home".to_owned()), Instant::now());
+        assert_eq!(removing(&app), None);
+    }
+
+    #[test]
+    fn removal_shows_a_notice() {
+        let mut app = app_with_places(&["home"]);
+        app.receive(Message::PlaceRemoved("home".to_owned()), Instant::now());
+        assert_eq!(app.status(), Some((Level::Info, "Removed @home")));
+    }
+
+    #[test]
+    fn removed_place_leaves_the_list() {
+        let mut app = app_with_places(&["home", "work"]);
+        key(&mut app, KeyCode::Char('\''));
+        key(&mut app, KeyCode::Down);
+        app.receive(Message::PlaceRemoved("work".to_owned()), Instant::now());
+        let Some(Prompt::Search(search)) = app.prompt() else {
+            panic!("the search is not open");
+        };
+        assert_eq!(
+            (result_labels(&app), search.selected, app.places().len()),
+            (vec!["@home".to_owned()], 0, 1)
+        );
+    }
+
     #[test]
     fn backspace_on_the_at_sign_turns_to_a_place_search() {
         let mut app = app_with_places(&["home"]);
@@ -1411,7 +1570,7 @@ mod tests {
     fn save_error_goes_to_the_status_line() {
         let mut app = ready_app();
         app.receive(
-            Message::SaveFailed("cannot save @work".to_owned()),
+            Message::PlaceFailed("cannot save @work".to_owned()),
             Instant::now(),
         );
         assert_eq!(app.status(), Some((Level::Error, "cannot save @work")));
@@ -1423,7 +1582,7 @@ mod tests {
         let id = route_id(&plan_route(&mut app));
         let now = Instant::now();
         app.receive(Message::Routes(id, Err("No route found.".to_owned())), now);
-        app.receive(Message::SaveFailed("Cannot save @work".to_owned()), now);
+        app.receive(Message::PlaceFailed("Cannot save @work".to_owned()), now);
         assert_eq!(app.status(), Some((Level::Error, "Cannot save @work")));
     }
 
