@@ -106,7 +106,7 @@ The config file can change each endpoint. Providers are concrete types for now. 
 
 ## Release
 
-- `cargo-dist`: macOS (arm64, x86_64), Linux (x86_64, arm64), Windows (x86_64, best effort).
+- `cargo-dist`: macOS (arm64, x86_64) and Linux (x86_64, arm64). Windows is out of scope.
 - GitHub releases and a Homebrew tap.
 - `docs/agents.md` and `skills/tmaps/SKILL.md` ship in M1.
 
