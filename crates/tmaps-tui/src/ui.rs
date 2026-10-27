@@ -921,6 +921,7 @@ fn prompt_view(
     units: Units,
     spinner: char,
 ) -> PromptView {
+    let hint = Style::new().fg(palette.muted());
     match prompt {
         Prompt::Search(search) => {
             let saved = search.text.trim().starts_with('@');
@@ -934,21 +935,18 @@ fn prompt_view(
             } else if let Some(error) = &search.error {
                 Some((format!("✗ {error} Type to try again."), palette.error()))
             } else if search.pending.is_some() {
-                Some((format!("{spinner} Searching…"), Style::new()))
+                Some((format!("{spinner} Searching…"), hint))
             } else if search.text.trim().is_empty() {
                 Some((
                     "Type a place, an address, or @name. Enter: go there.".to_owned(),
-                    Style::new(),
+                    hint,
                 ))
             } else if saved && app.places().is_empty() {
-                Some((
-                    "No saved places. m: save the place at +".to_owned(),
-                    Style::new(),
-                ))
+                Some(("No saved places. m: save the place at +".to_owned(), hint))
             } else if saved {
-                Some(("No saved place matches.".to_owned(), Style::new()))
+                Some(("No saved place matches.".to_owned(), hint))
             } else {
-                Some(("No places found.".to_owned(), Style::new()))
+                Some(("No places found.".to_owned(), hint))
             };
             PromptView {
                 title: " Search ",
@@ -994,7 +992,7 @@ fn prompt_view(
             } else {
                 (
                     "Letters, digits, '-', and '_'. Enter: save.".to_owned(),
-                    Style::new(),
+                    hint,
                 )
             }),
             count: None,
@@ -1143,13 +1141,19 @@ fn draw_prompt(frame: &mut Frame, view: &PromptView, palette: Palette, area: Rec
         Constraint::Length(u16::try_from(view.items.len()).unwrap_or(u16::MAX)),
         Constraint::Fill(1),
     ]));
-    let item_width = usize::from(items_area.width.saturating_sub(selected_width()));
+    let (spacing, marker_width) = if view.selected.is_some() {
+        (HighlightSpacing::Always, selected_width())
+    } else {
+        (HighlightSpacing::Never, 0)
+    };
+    let item_width = usize::from(items_area.width.saturating_sub(marker_width));
     let items = view
         .items
         .iter()
         .map(|(label, detail)| item_line(label, detail, item_width, palette));
     let mut state = ListState::default().with_selected(view.selected);
-    frame.render_stateful_widget(selectable(items, palette), items_area, &mut state);
+    let list = selectable(items, palette).highlight_spacing(spacing);
+    frame.render_stateful_widget(list, items_area, &mut state);
     frame.render_widget(Paragraph::new(note), note_area);
     ListRegion {
         area: items_area,
@@ -1754,6 +1758,34 @@ mod tests {
         type_keys(&mut app, "m");
         let text = screen(80, 24, &app);
         assert!(text.contains("The place at +") && text.contains("45.46420, 9.19000"));
+    }
+
+    #[test]
+    fn save_prompt_row_lines_up_with_the_name() {
+        let mut app = app_with_home();
+        type_keys(&mut app, "m");
+        let text = screen(80, 24, &app);
+        let column = |needle: &str| text.lines().find_map(|line| line.find(needle));
+        assert_eq!(column("│ @"), column("│ The place at +"));
+    }
+
+    #[test]
+    fn prompt_help_is_muted_and_a_warning_is_not() {
+        let mut app = app_with_home();
+        type_keys(&mut app, "m");
+        let palette = Palette::new(Depth::Rgb, Shade::Dark);
+        let note_style = |app: &App| {
+            prompt_view(app.prompt().unwrap(), app, palette, Units::Metric, ' ')
+                .note
+                .unwrap()
+                .1
+        };
+        let help = note_style(&app);
+        type_keys(&mut app, "home");
+        assert_eq!(
+            (help, note_style(&app)),
+            (Style::new().fg(palette.muted()), palette.error())
+        );
     }
 
     #[test]
