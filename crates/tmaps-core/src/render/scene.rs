@@ -281,11 +281,10 @@ pub(super) fn to_dots(placement: &VisibleTile, [x, y]: [f32; 2]) -> DotPoint {
 }
 
 /// Fills each cell whose center is inside the rings and the bounds, by the even-odd rule.
-/// `crossings` is scratch space, kept by the caller to reuse its allocation.
+/// `crossings` is scratch space that the caller reuses.
 ///
-/// Each edge adds its crossings with the rows of cell centers that it spans, so the time is
-/// linear in edges plus crossings. Testing every edge on every row is slow for the merged
-/// multipolygons of tiles, which can have thousands of rings.
+/// Each edge adds crossings only for the rows that it spans: testing every edge on every row is
+/// slow for merged multipolygons, which can have thousands of rings.
 fn fill_rings(
     canvas: &mut Canvas,
     rings: impl IntoIterator<Item = impl IntoIterator<Item = DotPoint>>,

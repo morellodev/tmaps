@@ -98,8 +98,7 @@ impl Tile {
         Ok(Self { layers })
     }
 
-    /// Like [`Tile::decode`], but keeps only the layers whose name passes `keep`. The other
-    /// layers are not decoded, which saves most of the time on tiles with many points of interest.
+    /// Like [`Tile::decode`], but decodes only the layers whose name passes `keep`.
     ///
     /// # Errors
     ///
@@ -234,7 +233,6 @@ mod proto {
         pub layers: Vec<Vec<u8>>,
     }
 
-    /// Only the name of a [`Layer`]. Decoding skips the features.
     #[derive(Clone, PartialEq, prost::Message)]
     pub struct LayerName {
         #[prost(string, required, tag = "1")]
