@@ -11,6 +11,29 @@ pub struct Place {
     /// OSM `key:value` tag, for example `railway:station`.
     pub category: Option<String>,
     pub country_code: Option<String>,
+    #[serde(skip)]
+    pub kind: Option<PlaceKind>,
+    #[serde(skip)]
+    pub extent: Option<Extent>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PlaceKind {
+    House,
+    Street,
+    Locality,
+    District,
+    City,
+    County,
+    State,
+    Country,
+    Other,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Extent {
+    pub north_west: LatLon,
+    pub south_east: LatLon,
 }
 
 #[derive(Debug, Clone)]

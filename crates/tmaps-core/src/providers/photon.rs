@@ -3,7 +3,7 @@ use std::borrow::Cow;
 use serde::Deserialize;
 use serde::de::DeserializeOwned;
 
-use crate::geocode::{Place, SearchOptions};
+use crate::geocode::{Extent, Place, PlaceKind, SearchOptions};
 use crate::http::body_snippet;
 use crate::{Error, LatLon, Result};
 
@@ -127,6 +127,10 @@ struct Properties {
     countrycode: Option<String>,
     osm_key: Option<String>,
     osm_value: Option<String>,
+    #[serde(rename = "type")]
+    kind: Option<String>,
+    /// West, north, east, and south edges in degrees.
+    extent: Option<[f64; 4]>,
 }
 
 impl Feature {
@@ -145,8 +149,36 @@ impl Feature {
             location,
             category,
             country_code: properties.countrycode,
+            kind: properties.kind.as_deref().map(place_kind),
+            extent: properties.extent.and_then(extent),
         })
     }
+}
+
+fn place_kind(value: &str) -> PlaceKind {
+    match value {
+        "house" => PlaceKind::House,
+        "street" => PlaceKind::Street,
+        "locality" => PlaceKind::Locality,
+        "district" => PlaceKind::District,
+        "city" => PlaceKind::City,
+        "county" => PlaceKind::County,
+        "state" => PlaceKind::State,
+        "country" => PlaceKind::Country,
+        _ => PlaceKind::Other,
+    }
+}
+
+/// A box wider than half the world does not show where the place is: Photon gives -180 to 180
+/// for Fiji, and a box around the world for France with its overseas territories.
+fn extent([west, north, east, south]: [f64; 4]) -> Option<Extent> {
+    if east - west >= 360.0 || (east - west).rem_euclid(360.0) > 180.0 {
+        return None;
+    }
+    Some(Extent {
+        north_west: LatLon::new(north, west).ok()?,
+        south_east: LatLon::new(south, east).ok()?,
+    })
 }
 
 impl Properties {
@@ -188,6 +220,31 @@ mod tests {
         #[test]
         fn drops_unsupported_language() {
             assert_eq!(photon_lang(Some("it-IT")), None);
+        }
+    }
+
+    mod extent {
+        use super::*;
+
+        #[test]
+        fn reads_west_north_east_south() {
+            assert_eq!(
+                extent([6.6, 47.1, 18.8, 35.3]),
+                Some(Extent {
+                    north_west: LatLon::new(47.1, 6.6).unwrap(),
+                    south_east: LatLon::new(35.3, 18.8).unwrap(),
+                })
+            );
+        }
+
+        #[test]
+        fn drops_the_full_width_of_the_world() {
+            assert_eq!(extent([-180.0, -12.3, 180.0, -21.9]), None);
+        }
+
+        #[test]
+        fn drops_a_box_wider_than_half_the_world() {
+            assert_eq!(extent([-178.4, 51.3, 172.3, -50.2]), None);
         }
     }
 

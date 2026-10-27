@@ -8,6 +8,7 @@ use crossterm::event::{
 use lru::LruCache;
 use ratatui::layout::{Position, Rect};
 use tmaps_core::LatLon;
+use tmaps_core::geocode::{Place, PlaceKind};
 use tmaps_core::places::validate_name;
 use tmaps_core::render::{
     Canvas, DOTS_PER_CELL_X, DOTS_PER_CELL_Y, PreparedTile, RouteLine, View, render,
@@ -28,8 +29,10 @@ const PAN_STEP: f64 = 0.1;
 const FAST_PAN_STEP: f64 = 0.5;
 /// A step of the itinerary is a street corner, so the map zooms in at least to street level.
 const STEP_ZOOM: f64 = 16.0;
-/// A search result or a saved place has no extent, so the map shows its neighborhood.
+/// A place without an extent or a kind, such as a saved place, shows its neighborhood.
 const PLACE_ZOOM: f64 = 15.0;
+/// A deeper fit of a single building shows no context around it.
+const HOUSE_ZOOM: f64 = 17.0;
 const INFO_TIME: Duration = Duration::from_secs(3);
 
 pub struct App {
@@ -487,14 +490,17 @@ impl App {
             self.close_prompt();
             return true;
         }
+        let (width, height) = self.map_size_dots();
         let Some(prompt) = &mut self.prompt else {
             return false;
         };
         match prompt {
             Prompt::Search(search) => {
                 if key.code == KeyCode::Enter {
-                    let location = search.chosen().map(|place| place.location);
-                    self.close_at(location);
+                    let view = search
+                        .chosen()
+                        .map(|place| place_view(place, width, height));
+                    self.close_with(view);
                 } else if let Some(selected) =
                     prompt::select(search.selected, search.results.len(), key.code)
                 {
@@ -522,8 +528,12 @@ impl App {
             }
             Prompt::Places { selected } => {
                 if key.code == KeyCode::Enter {
-                    let location = self.places.values().nth(*selected).copied();
-                    self.close_at(location);
+                    let view = self
+                        .places
+                        .values()
+                        .nth(*selected)
+                        .map(|&location| View::new(location, PLACE_ZOOM));
+                    self.close_with(view);
                 } else if let Some(next) = prompt::select(*selected, self.places.len(), key.code) {
                     *selected = next;
                 } else {
@@ -549,11 +559,10 @@ impl App {
         }
     }
 
-    /// Closes the prompt and centers the map on `location`.
-    fn close_at(&mut self, location: Option<LatLon>) {
+    fn close_with(&mut self, view: Option<View>) {
         self.close_prompt();
-        if let Some(location) = location {
-            self.view = View::new(location, self.view.zoom().max(PLACE_ZOOM));
+        if let Some(view) = view {
+            self.view = view;
         }
     }
 
@@ -690,6 +699,29 @@ impl App {
     }
 }
 
+fn place_view(place: &Place, width: f64, height: f64) -> View {
+    place
+        .extent
+        .and_then(|extent| View::fitting(&[extent.north_west, extent.south_east], width, height))
+        .map_or_else(
+            || View::new(place.location, kind_zoom(place.kind)),
+            |view| View::new(view.center(), view.zoom().min(HOUSE_ZOOM)),
+        )
+}
+
+fn kind_zoom(kind: Option<PlaceKind>) -> f64 {
+    match kind {
+        Some(PlaceKind::Country) => 5.0,
+        Some(PlaceKind::State) => 7.0,
+        Some(PlaceKind::County) => 9.0,
+        Some(PlaceKind::City) => 12.0,
+        Some(PlaceKind::District | PlaceKind::Locality) => 14.0,
+        Some(PlaceKind::Street) => 16.0,
+        Some(PlaceKind::House) => HOUSE_ZOOM,
+        Some(PlaceKind::Other) | None => PLACE_ZOOM,
+    }
+}
+
 /// To 6 decimals, about 0.1 m: more digits in the config file only add noise.
 fn rounded(location: LatLon) -> LatLon {
     let round = |degrees: f64| (degrees * 1e6).round() / 1e6;
@@ -711,7 +743,7 @@ fn route_lines(routes: &[Route], selected: usize) -> Vec<RouteLine<'_>> {
 mod tests {
     use std::assert_matches;
 
-    use tmaps_core::geocode::Place;
+    use tmaps_core::geocode::Extent;
 
     use super::*;
     use crate::regions::ListRegion;
@@ -982,6 +1014,8 @@ mod tests {
             location: LatLon::new(lat, lon).unwrap(),
             category: None,
             country_code: None,
+            kind: None,
+            extent: None,
         }
     }
 
@@ -1050,6 +1084,72 @@ mod tests {
         assert!(
             app.prompt().is_none()
                 && app.view() == View::new(place("", 26.4, -99.0).location, 15.0)
+        );
+    }
+
+    fn go_to(app: &mut App, place: Place) {
+        key(app, KeyCode::Char('/'));
+        type_text(app, "x");
+        let id = last_search(app);
+        app.receive(Message::SearchResults(id, Ok(vec![place])), Instant::now());
+        key(app, KeyCode::Enter);
+    }
+
+    #[test]
+    fn a_country_fits_the_screen() {
+        let mut app = ready_app();
+        app.view = View::new(milan(), 16.0);
+        let italy = Place {
+            extent: Some(Extent {
+                north_west: LatLon::new(47.1, 6.6).unwrap(),
+                south_east: LatLon::new(35.3, 18.8).unwrap(),
+            }),
+            ..place("Italia", 42.6, 12.7)
+        };
+        go_to(&mut app, italy);
+        let (width, height) = app.map_size_dots();
+        let corner = |lat, lon| {
+            app.view()
+                .screen_position(LatLon::new(lat, lon).unwrap(), width, height)
+        };
+        let ((west, north), (east, south)) = (corner(47.1, 6.6), corner(35.3, 18.8));
+        assert!(
+            app.view().zoom() < 6.0
+                && west >= 0.0
+                && north >= 0.0
+                && east <= width
+                && south <= height,
+            "{:?}",
+            app.view()
+        );
+    }
+
+    #[test]
+    fn a_building_does_not_zoom_past_the_house_zoom() {
+        let mut app = ready_app();
+        let kiosk = Place {
+            extent: Some(Extent {
+                north_west: LatLon::new(45.4643, 9.1915).unwrap(),
+                south_east: LatLon::new(45.4642, 9.1916).unwrap(),
+            }),
+            ..place("Edicola", 45.4642, 9.1916)
+        };
+        go_to(&mut app, kiosk);
+        assert_eq!(app.view().zoom(), HOUSE_ZOOM);
+    }
+
+    #[test]
+    fn the_kind_sets_the_zoom_without_an_extent() {
+        let mut app = ready_app();
+        app.view = View::new(milan(), 16.0);
+        let rome = Place {
+            kind: Some(PlaceKind::City),
+            ..place("Roma", 41.9, 12.5)
+        };
+        go_to(&mut app, rome);
+        assert_eq!(
+            app.view(),
+            View::new(LatLon::new(41.9, 12.5).unwrap(), 12.0)
         );
     }
 
@@ -1166,6 +1266,17 @@ mod tests {
             Instant::now(),
         );
         assert_eq!(app.places().get("work"), Some(&milan()));
+    }
+
+    #[test]
+    fn a_saved_place_zooms_out_to_its_neighborhood() {
+        let mut app = ready_app();
+        app.view = View::new(milan(), 18.0);
+        let rome = LatLon::new(41.9, 12.5).unwrap();
+        app.receive(Message::PlaceSaved("rome".to_owned(), rome), Instant::now());
+        key(&mut app, KeyCode::Char('\''));
+        key(&mut app, KeyCode::Enter);
+        assert_eq!(app.view(), View::new(rome, PLACE_ZOOM));
     }
 
     #[test]

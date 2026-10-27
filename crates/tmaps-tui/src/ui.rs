@@ -1645,6 +1645,8 @@ mod tests {
             location: LatLon::new(45.4641, 9.1919).unwrap(),
             category: Some("tourism:attraction".to_owned()),
             country_code: None,
+            kind: None,
+            extent: None,
         };
         app.receive(Message::SearchResults(id, Ok(vec![place])), Instant::now());
         app
