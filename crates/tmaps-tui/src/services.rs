@@ -12,6 +12,7 @@ use tmaps_core::providers::valhalla::Valhalla;
 use tmaps_core::routing::{Mode, RouteRequest};
 use tmaps_core::{Error, LatLon};
 use tokio::sync::mpsc;
+use tokio::task::AbortHandle;
 
 use crate::message::{Message, Server, describe, no_route};
 
@@ -58,7 +59,8 @@ pub struct Services {
     lang: Arc<str>,
     config_file: Arc<PathBuf>,
     sender: mpsc::UnboundedSender<Message>,
-    last_route: Arc<AtomicU64>,
+    /// A new route request aborts the last one, also while it waits for the router throttle.
+    route_task: Mutex<Option<AbortHandle>>,
     last_search: Arc<AtomicU64>,
     searches: Arc<Mutex<LruCache<String, Vec<Place>>>>,
     /// Saves read, change, and write the config file, so they must not overlap.
@@ -79,7 +81,7 @@ impl Services {
             lang: Arc::from(lang),
             config_file: Arc::new(config_file),
             sender,
-            last_route: Arc::default(),
+            route_task: Mutex::default(),
             last_search: Arc::default(),
             searches: Arc::new(Mutex::new(LruCache::new(SEARCH_CACHE_SIZE))),
             config_lock: Arc::default(),
@@ -92,13 +94,8 @@ impl Services {
         match request {
             Request::Route { id, from, to, mode } => {
                 let valhalla = Arc::clone(&self.valhalla);
-                let last_route = Arc::clone(&self.last_route);
-                last_route.store(id, Ordering::Relaxed);
-                tokio::spawn(async move {
+                let task = tokio::spawn(async move {
                     tokio::time::sleep(ROUTE_DEBOUNCE).await;
-                    if last_route.load(Ordering::Relaxed) != id {
-                        return;
-                    }
                     let request = RouteRequest {
                         from,
                         to,
@@ -112,6 +109,14 @@ impl Services {
                         .map_err(|error| route_error(&error, mode));
                     let _ = sender.send(Message::Routes(id, routes));
                 });
+                let previous = self
+                    .route_task
+                    .lock()
+                    .unwrap_or_else(PoisonError::into_inner)
+                    .replace(task.abort_handle());
+                if let Some(previous) = previous {
+                    previous.abort();
+                }
             }
             Request::PlaceName { id, location } => {
                 let photon = Arc::clone(&self.photon);
@@ -204,7 +209,49 @@ fn search_key(text: &str, near: LatLon) -> String {
 
 #[cfg(test)]
 mod tests {
+    use wiremock::matchers::method;
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
     use super::*;
+
+    #[tokio::test]
+    async fn new_route_request_aborts_one_that_waits_for_the_router() {
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .respond_with(ResponseTemplate::new(500))
+            .mount(&server)
+            .await;
+        let client = tmaps_core::http::client().unwrap();
+        let (sender, mut receiver) = mpsc::unbounded_channel();
+        let services = Services::new(
+            Photon::new(client.clone(), &server.uri()),
+            Valhalla::new(client, &server.uri()),
+            "en",
+            PathBuf::new(),
+            sender,
+        );
+        let route = |id| Request::Route {
+            id,
+            from: LatLon::new(45.4642, 9.19).unwrap(),
+            to: LatLon::new(41.9028, 12.4964).unwrap(),
+            mode: Mode::Car,
+        };
+        let past_debounce = ROUTE_DEBOUNCE + Duration::from_millis(50);
+        services.send(route(1));
+        tokio::time::sleep(past_debounce).await;
+        // The router throttle holds request 2 for about one second.
+        services.send(route(2));
+        tokio::time::sleep(past_debounce).await;
+        services.send(route(3));
+        let mut ids = Vec::new();
+        while ids.len() < 2 {
+            if let Some(Message::Routes(id, _)) = receiver.recv().await {
+                ids.push(id);
+            }
+        }
+        let requests = server.received_requests().await.unwrap().len();
+        assert_eq!((ids, requests), (vec![1, 3], 2));
+    }
 
     #[test]
     fn no_route_error_tells_the_other_modes() {

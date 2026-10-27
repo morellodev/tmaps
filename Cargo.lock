@@ -3394,6 +3394,7 @@ dependencies = [
  "tmaps-core",
  "tokio",
  "toml",
+ "wiremock",
 ]
 
 [[package]]
