@@ -25,19 +25,23 @@ use crate::regions::{ListRegion, Regions};
 use crate::trip::{Routes, Trip, Waypoint};
 
 const STATUS_HEIGHT: u16 = 1;
-const PANEL_WIDTH: u16 = 40;
+/// The side panel takes a quarter of the terminal, in these bounds.
+const PANEL_MIN_WIDTH: u16 = 40;
+const PANEL_MAX_WIDTH: u16 = 56;
 const DRAWER_MIN_HEIGHT: u16 = 6;
 const DRAWER_MAX_HEIGHT: u16 = 12;
 /// A drawer that leaves the map fewer rows hides, and the status line shows the route.
 const MAP_MIN_HEIGHT: u16 = 8;
-/// The inner width of the side panel, inside the borders and the padding.
-const SUMMARY_WIDTH: u16 = PANEL_WIDTH - 4;
+/// The summary in a drawer is at most as wide as in the narrowest side panel.
+const SUMMARY_WIDTH: u16 = PANEL_MIN_WIDTH - 4;
 /// A narrower drawer puts the steps under the summary.
 const DRAWER_SUMMARY_MIN_WIDTH: u16 = 24;
 const STEPS_MIN_HEIGHT: u16 = 3;
 /// Narrower terminals get the panel as a drawer below the map, so the map keeps its width.
 const SIDE_PANEL_MIN_WIDTH: u16 = 100;
-const PROMPT_WIDTH: u16 = 60;
+/// The prompt takes half of the map, in these bounds.
+const PROMPT_MIN_WIDTH: u16 = 60;
+const PROMPT_MAX_WIDTH: u16 = 100;
 /// A smaller terminal gets only a request for more room.
 const MIN_WIDTH: u16 = 30;
 const MIN_HEIGHT: u16 = 8;
@@ -91,6 +95,7 @@ const HELP: [HelpGroup; 4] = [
 struct Areas {
     map: Rect,
     panel: Option<Rect>,
+    drawer: bool,
     status: Rect,
 }
 
@@ -99,12 +104,14 @@ fn areas(area: Rect, panel: bool) -> Areas {
         Constraint::Fill(1),
         Constraint::Length(STATUS_HEIGHT),
     ]));
+    let drawer = area.width < SIDE_PANEL_MIN_WIDTH;
     let split = if !panel {
         None
-    } else if area.width >= SIDE_PANEL_MIN_WIDTH {
+    } else if !drawer {
+        let width = (area.width / 4).clamp(PANEL_MIN_WIDTH, PANEL_MAX_WIDTH);
         Some(main.layout(&Layout::horizontal([
             Constraint::Fill(1),
-            Constraint::Length(PANEL_WIDTH),
+            Constraint::Length(width),
         ])))
     } else {
         let drawer = (main.height / 2).clamp(DRAWER_MIN_HEIGHT, DRAWER_MAX_HEIGHT);
@@ -119,11 +126,13 @@ fn areas(area: Rect, panel: bool) -> Areas {
         Some([map, panel]) => Areas {
             map,
             panel: Some(panel),
+            drawer,
             status,
         },
         None => Areas {
             map: main,
             panel: None,
+            drawer,
             status,
         },
     }
@@ -174,7 +183,7 @@ pub fn draw(frame: &mut Frame, app: &App, palette: Palette, units: Units) -> Reg
     let spinner = spinner(app);
     let steps = areas
         .panel
-        .and_then(|panel| draw_panel(frame, trip, palette, units, spinner, panel));
+        .and_then(|panel| draw_panel(frame, trip, palette, units, spinner, panel, areas.drawer));
     let status = Status {
         palette,
         units,
@@ -326,6 +335,7 @@ fn draw_panel(
     units: Units,
     spinner: char,
     area: Rect,
+    drawer: bool,
 ) -> Option<ListRegion> {
     let mut block = Block::bordered()
         .title(" Route ")
@@ -346,7 +356,7 @@ fn draw_panel(
     frame.render_widget(block, area);
 
     // A drawer is wide and short, so the steps go next to the summary.
-    let side_by_side = inner.width >= 2 * DRAWER_SUMMARY_MIN_WIDTH;
+    let side_by_side = drawer && inner.width >= 2 * DRAWER_SUMMARY_MIN_WIDTH;
     let width = if side_by_side {
         SUMMARY_WIDTH.min(inner.width / 2)
     } else {
@@ -1059,7 +1069,9 @@ fn box_block(title: &'static str, palette: Palette) -> Block<'static> {
 /// Draws the prompt at the top of the map, so the place at the crosshair stays visible.
 /// Returns the list of items.
 fn draw_prompt(frame: &mut Frame, view: &PromptView, palette: Palette, area: Rect) -> ListRegion {
-    let width = PROMPT_WIDTH.min(area.width);
+    let width = (area.width / 2)
+        .clamp(PROMPT_MIN_WIDTH, PROMPT_MAX_WIDTH)
+        .min(area.width);
     let mut block = box_block(view.title, palette).padding(Padding::horizontal(1));
     if let Some(count) = &view.count {
         block = block.title_bottom(Line::from(format!(" {count} ")).right_aligned());
@@ -1401,7 +1413,25 @@ mod tests {
     fn panel_is_at_the_side_on_wide_terminals() {
         assert_eq!(
             map_size(120, 40, true),
-            (120 - PANEL_WIDTH, 40 - STATUS_HEIGHT)
+            (120 - PANEL_MIN_WIDTH, 40 - STATUS_HEIGHT)
+        );
+    }
+
+    #[test]
+    fn side_panel_grows_on_very_wide_terminals() {
+        assert_eq!(
+            [map_size(200, 50, true).0, map_size(300, 50, true).0],
+            [200 - 50, 300 - PANEL_MAX_WIDTH]
+        );
+    }
+
+    #[test]
+    fn wide_side_panel_keeps_the_steps_under_the_summary() {
+        let text = screen(240, 30, &app_with_routes());
+        assert!(
+            !text
+                .lines()
+                .any(|line| line.contains("1 car") && line.contains("step 0"))
         );
     }
 
@@ -1580,6 +1610,27 @@ mod tests {
 
     #[test]
     fn search_shows_the_results_below_the_text() {
+        let app = app_with_search_result("Piazza del Duomo, Milano");
+        let text = screen(80, 24, &app);
+        let lines: Vec<&str> = text.lines().collect();
+        let found = [
+            lines[2].contains("› Duomo"),
+            lines[3].contains("▶ Piazza del Duomo, Milano"),
+            lines[3].contains("attraction · 150 m"),
+            lines[4].contains(" 1 result "),
+        ];
+        assert_eq!(found, [true; 4]);
+    }
+
+    #[test]
+    fn search_box_grows_on_wide_terminals() {
+        let label = "Piazza del Duomo, Municipio 1, Milano, Lombardia, 20122, Italia";
+        let app = app_with_search_result(label);
+        let [narrow, wide] = [80, 200].map(|width| screen(width, 24, &app).contains(label));
+        assert_eq!((narrow, wide), (false, true));
+    }
+
+    fn app_with_search_result(label: &str) -> App {
         let mut app = App::new(View::new(LatLon::new(45.4642, 9.19).unwrap(), 14.0));
         type_keys(&mut app, "/Duomo");
         let id = app
@@ -1592,22 +1643,14 @@ mod tests {
             })
             .unwrap();
         let place = Place {
-            label: "Piazza del Duomo, Milano".to_owned(),
+            label: label.to_owned(),
             name: None,
             location: LatLon::new(45.4641, 9.1919).unwrap(),
             category: Some("tourism:attraction".to_owned()),
             country_code: None,
         };
         app.receive(Message::SearchResults(id, Ok(vec![place])), Instant::now());
-        let text = screen(80, 24, &app);
-        let lines: Vec<&str> = text.lines().collect();
-        let found = [
-            lines[2].contains("› Duomo"),
-            lines[3].contains("▶ Piazza del Duomo, Milano"),
-            lines[3].contains("attraction · 150 m"),
-            lines[4].contains(" 1 result "),
-        ];
-        assert_eq!(found, [true; 4]);
+        app
     }
 
     #[test]
