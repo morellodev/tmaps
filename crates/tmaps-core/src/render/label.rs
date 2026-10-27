@@ -4,7 +4,7 @@ use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
 
 use super::canvas::Canvas;
-use super::scene::{DotPoint, clip, to_dots};
+use super::scene::{Bounds, DotPoint, clip, to_dots};
 use super::view::{View, VisibleTile};
 use super::{DOTS_PER_CELL_X, DOTS_PER_CELL_Y};
 use crate::mvt::{Feature, Geometry, Layer, Value};
@@ -288,7 +288,7 @@ fn line_spots(
     lines: &[Vec<[f32; 2]>],
     width: i32,
 ) -> Vec<Span> {
-    let bounds = (canvas.width_dots(), canvas.height_dots());
+    let bounds = Bounds::of(canvas);
     let mut runs = Vec::new();
     for line in lines {
         let mut cells: Vec<(i32, i32)> = Vec::new();

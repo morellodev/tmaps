@@ -125,6 +125,11 @@ fn render_region_in_english() {
 }
 
 #[test]
+fn render_parent_while_tiles_load() {
+    insta::assert_snapshot!(snapshot(MILAN_Z5, 6.0, "it-IT"));
+}
+
+#[test]
 fn render_route_over_the_streets() {
     let center = center_of(MILAN_Z14);
     let at = |dlat: f64, dlon: f64| LatLon::new(center.lat() + dlat, center.lon() + dlon).unwrap();

@@ -1,0 +1,85 @@
+---
+source: crates/tmaps-core/tests/render.rs
+expression: "snapshot(MILAN_Z5, 6.0, \"it-IT\")"
+---
+          ⢰⠚⠈⢱       ⢀⠞⠢⢆⠴⣆⡜⢚⡌⠱⣷⡥⠓⠲⠤⣀⣀⣀⣀⣀⡞   ⠉⢏⣀⡔⠊⣸⠉⣇⣀⣀⣠⠜⠁  ⠠⣿⠒⠮⣃⣀           ⠓⡆⠘⢧    ⣸     ⣀⡴⠶⠋⠁⠉⠉⠉⠉
+    ⠓⠢⠤⠤⢄ ⢸⣀⡀⠘⣄⡀     ⡸      ⠈⣳⢠⠇         ⠉⢆      ⡰⠁      ⢠⠶⠚⡺⣋ ⢀⡨⡿          ⢀⠞  ⠈⢇⢀⣠⠊  ⣀⠤⠶⠋         
+         ⠈⢢ ⠑⠒⠉⡏⠒⠋⠺⠖⠋⠉       ⠘⢺           ⡼    ⢀⡜⢁⡤⠒⠒⢤  ⢸⣩⣧⣲⢽⣇⠴⠛⠦⢵          ⢸⠁   ⠸⡽⠤⣤⠶⠋             
+               ⡇             ⢀⠇           ⣇⣀⣠⠤⠒⠉⠉⠁   ⠘⢢⢠⣫⡨⠚⠉⢹    ⡜⠢⡀⣀ ⡀      ⠉⢹⠁  ⢨⠞                
+              ⢱⡇             ⢸            ⠈⡇          ⡠⠋⠃   ⢣⡀ ⣠⠒⠃ ⠉⠉⠉⠉⠑⢦     ⠻⠚⢆                   
+             ⢠⠃⠹⡀            ⡸            ⢸           ⡇      ⣯⠋         ⢸       ⠈⢱⡀         ⣀⣰⠢⠤⢄⡀  
+              ⠣⡀⢳            ⢹⠒⣄⣄⡀      ⢀⡔⠊          ⢠⠃     ⢶⡟⠓          ⠳⠤⠶⣄⣠⡄  ⡠⢣⡀ ⢀ ⡠⠦⠤⡤⠖⠃    ⠑⠋⠖
+⠤⠔⠒⠋⠉⠒⠲⡤⠤⠎⠑⠒⠲⠲⠤⡈⢢⣃⠔⠒⠖⠒⠋⠉⠒⠑⠒⢢⣄⠘⡄  ⢹⠤⠤⣀⡠⠤⠒⠃  ⡠⣀        ⢸     ⢰⠁                ⣀⣸⣤⠒⠃ ⠱⠮⡻⠉⠁            
+               ⠙⢍⢆          ⠈⠉⢱⡠⢤⡼⢾⡛⢋⣫⠒⠒⠔⠒⠊  ⠉⢢      ⡎   ⢠⠎⠁                ⢰⠇⠁ ⢇⡀  ⠈⠁              
+                ⢈⣾             ⢹⣎⡼⣄⡗⠊⣸⡁        ⠑⡄   ⡰⠁  ⢰⠊       ⠉ ⢠⠆       ⠸⡂   ⠈⠲⢦⡀ ⢀⣀⠵⠶⠢⠤⠒⠒⠒⠒⢆   
+                ⢸⢸            ⡠⣺⡗⢢⡴⠓⠢⢏⣀         ⠈⠉⠒⠜    ⢸⠂        ⣀⣼⡀        ⠘⠲⡆⣀   ⠈⠉⠉         ⠸⡀  
+                 ⢹⡆           ⣀⣿⡠⠏     ⠑⠢⠤⣀            ⡴⡏       ⢀⠔⠁ ⢸          ⠈⢰⠃           ⢀⡀  ⠈⠦⣀
+                 ⠈⢗⢄      ⢀⡠⠴⠋ ⠙⣧         ⠈⠑⠶⡒⠒⠒⠋⠉⠉⠒⠒⠊⠉⠁⠈⢣   ⣠⠔⠚⠛⢄  ⠈⣇ ⢀⡄        ⡇       ⡀⣠⠜⠉⠁⠈⠊⠲⠲⠊⠙
+                 ⠉⢹⠙⢢⣄⡀ ⡤⠖⠉    ⡰⡏           ⢸⠁            ⢙⠴⠊    ⡎   ⠈⠦⠊         ⠓⣦⣠⠯⠤⡰⠋⠉⠉          
+                  ⡎ ⠘⣤⡵⠊⠁     ⢰⢹            ⠈⠢⡄           ⡸     ⢰⠁                 ⠘⠤⣀              
+                ⢀⠼⢠⠏⠉         ⢸⡇          ⠠⠤⠤⠤⠚⠦⣄        ⢠⠃     ⠘⡄                  ⡰⠇              
+               ⢠⢃⡠⠎          ⢰⠸⣺               ⢠⡤⢵      ⢰⠊       ⠘⢢                ⠸⡅              ⢰
+             ⣀⠤⠃⡏            ⠁ ⡏⢆             ⢠⠎  ⠣⡀  ⢀⠔⠁          ⠑⢦⡀           ⣀⡀⡔⠇             ⡆⢸
+           ⡸⠉   ⡇              ⢸⠘⡆         ⢀⡰⠋⠉    ⢹⣂⠝⠁              ⠈⠉⠉⠑⠒⡆ ⡀ ⢠⡠⠟⠁⠈⠁           ⢀⢤⠋⣠⡧
+          ⢠⠃  ⠠⠊               ⠈⡆⡇      ⢀⡠⠒⠉       ⡼⡉          ⢠⠴⠤⢆⡀ ⣀⢄⡔⢴⡔⢏⠉⠈⠑⠊⣁⠤⠋⠉⠓⠒⠒⠢⠤⠤⢄⣀⣀  ⢀⡼⠛⣿⠗⠊
+          ⢠⡧⠖⠂                  ⢹⠁  ⠖⢀⣀⡠⠊         ⢀⡇⠉          ⡜⠂ ⠐⠓⠢⠼   ⢱⠈⠢⣄⣠⠞⠁          ⠚ ⠉⠹⣉ ⢠⠃  
+          ⢺⠃                    ⢸⡆⢀⠴⠋⠉⠁           ⡸            ⠓⠔⢲⡀      ⠈⠉⢽ ⠉               ⣀⠎⠳⣸⣄⡀ 
+          ⠘⡄                    ⢸⣏⡫              ⢀⡞              ⠈⢲        ⢸⡀              ⣠⠼   ⡎⠸⡉⠉
+⡇  ⢰⠒⢆     ⠧⣀                  ⢠⢻⠉                           ⡠⣄⢄⡤⠢⣸         ⠙⠤⣀⣠⣀⡀      ⠒⠖⠉    ⡰⠁ ⡇ 
+⠈⠖⠉⠋ ⠉⠉⠱⡄    ⠉⠢⢤⡀⡖             ⣇⡞                        ⠴⡚⠙⠉                    ⡜          ⡠⠔⠋   ⡇ 
+        ⠈⢣⡄     ⠈             ⢸⠇                      ⡰⠲⠒⠋                       ⠸⡀        ⡰⠁     ⢇ 
+         ⠈⡇                   ⢸⡆                  ⢀ ⢀⣠⠝                         ⡤⠒⠺⠌⠑⠒⠢⠤⢄⠤⠔⠁      ⢸⣀
+          ⢸                  ⢀⠞⡇                  ⡧⠉⠉⠈                         ⢀⠷                 ⢸⠂
+           ⠓⡄                ⡎ ⡇                 ⣸⡁                           ⡤⠞                 ⣔⣊⡆
+            ⢹               ⢀⠇⡼⠁              ⡶⠤⣀⣀⠟                           ⢇⡀                ⢀⣁⣀⡸
+             ⠱⣄             ⢸⢰⠃  ⢀⡠⢤⡀        ⢤⠵⠆ ⠈       ⢀⡠⠂                  ⢠⠵⠄             ⠤⠔⠁  ⢀
+              ⡏      ⢀ ⢀⢀   ⡜⢸  ⢀⡜  ⡽⠆       ⠸⣄⣀⡀       ⣰⠃                    ⠸⢄             ⠲     ⠇
+             ⠈⠋⠉⠓⢆⡀⣰⠋⠡⣃⠇⠉⠲⢄⣸⡗⢚⠕⡄ ⠧⠤⣴⠥⢄⢠⣶       ⠁⠉⠹⡇     ⡇                      ⠈⢦⡀                  
+                  ⠈⠁       ⠘⡇⡎ ⢱⠔⠚⠉   ⠁⢇⣀⣄⡀       ⠈⡇    ⢣                        ⠧⣀⣄                
+                            ⢹⡟⣆          ⠁⠈⠉⢹⣀  ⠰⡲⣴⡃    ⠈⢣                          ⠉⠛⢤       ⣀⢠⢤   
+               ⡄             ⣇⢸⠢⢄            ⠉⠦⠔⠋ ⠉⠁     ⠈⡆                            ⠉⠉⠗⠢⠖⠋⠉⠉⠁⠪⣰⠋⠒
+               ⠸⡄            ⠉⡿⣄ ⡇ ⡠⠄                    ⣰⠁                                     ⣀⡜⠉ 
+                ⠈⢢⡀        ⢀⠔⠋ ⣨⢟⡧⠚⠁                    ⡰⠁                                     ⢀⡕   
+                  ⠸⣄    ⢀⣀⠔⠁⢀⡤⠺⡙⠃⢸                     ⢀⠇                                     ⡏⠁    
+                      ⢠⠒⠉  ⢰⡞⠁   ⠈⠓⢄                   ⡜                             ⢸      ⢸⠋    ⣀⢀
+
+          BBBr       BBBBBBBBHHHHHHHHHHHHH   BBBBBHHBBBBBBg BHBBBH           BBHH    B     HHHHrHHHH
+    HHHHH BBBrrB     B      BBHH         HH      HH  ggggHHHHH BBH          BB  HHBBB  HHHH         
+         HH BBBrBBBBBB       BH           H    HHHHHHHggHHrrHHHHHH          BB  gHHrHHH             
+               r             HH           HHHHHHHH   HHrHHHHH    HHHH H      BBBggHH                
+              HH             H            HH          rHH   HH HHH HHHHHH    gBBBgg                 
+ gggg        rrHH            H            H           r      HH         H  gg   BBB         BBBBBB  
+ggggggg       rrH            HHHHH      HHH          rr     HHH          HHHHHH  BBB H BBBBBB    BBB
+HHHHHHHHHHHHHHHHHHHHHHHHHHHHHHH  HHHHHHHH  rr        r     HHg               BHHBB BHHBB            
+ ggggggg       HHr          HHHHHHHHHHrrrrr  rr      r   HHHgggg           gBBB HH  HH              
+gggggggggg      HH             HHHHHHHH        rr   rr  HHgggggggHgHH     g BB   HHHH HHHHHHHHHHH   
+ggggggggggggg   Hr            HHHHHHHHH         rrrr    HHggggggggHHH        BBBB   HHH       ggHH  
+gggggggggggg     Hr           HHHH     HHHH         gg HHgggggggHHH H          BBB   gggg    BB  HHH
+gggggggggggg     HHH      HHHHgHH         HHHHHHHHHHHHHHHHgggHHHHH  HH HH     g  B  gggggBBBBBBBBBBH
+ggggggggggggg    HHHHHH HHHggggrH           HH      ggggggHHH    H   HHH         BBBBBBBBBggg       
+  gggggggggg      r HHHHHgggggrH            HHH   ggggggggH     HH          gg g   BBB     g        
+gg gggggg g     rrHHHgggggggggrH          HHHHHHH gggggggHH     HH   gg    ggggggg  BB              
+ggggggggg gg   rHHH  gggggg  HrH               HHHggggggHH       HH  ggg gggg g    BB              H
+  gggggggg   rrrH       g    H HH             HHggHHggHHH          HHH  ggg      BBBB             HH
+   gggg    rr   H              rHH         HHHHggggHHHH              HHHHHH B BBBBBB         ggHHHHH
+          rr  HH               rrH      HHHHgggggggHH     g   gBBBBB BBBBBHBBBBHHHHHHHHHHHHH  HHHHHH
+          HHHH           g      HH  HHHHHgggggggggHHH    ggg  gBBgBBBB   BHHHHHH  ggggg   H HHH rr  
+          Hr     g  ggggggg     HHHHHHHgggggggggggH    ggggggggBBBBgggg  BBB H  gg           HHHHHH 
+          rrggggggggggggggg     rHH   gggggggggggHH    ggggggggggBBggg     BB   g          HH   rHHH
+B  BBB     rrggggggggggggggg   rHH   ggggggggggggg       ggggBBBBBBggg      BBBBBB      HHH    rr H 
+BBBB BBBB    rrrrrggggggggggg  HH   gggg gggggggggg      BBBBgggggggggg   gggggggB          rrr   H 
+        BBB   ggrggggggggggg  HH     gg    ggggggg    BBBB ggggggggggggg  gggggggBB        rr     H 
+         BB  ggggggggggg      HH             g gggBgBBB     gggggggggggg  ggggggBBBrrrrrrrrr      HH
+          B  gggggggg        rrH                  BBBB        gggggggggg   ggg BB gg              HH
+           BBgggggggg        r H                 BB               gggg        BB                 HHH
+ ggggggggg  Bgggggg         rrHH    gggg  ggg BBBBB  gg             gg      g BB                HHHH
+ ggggggggggggBBg            rHH  BBBB gggggg BBBgBggggg  HHH              ggggBBB             HHH  H
+ggggg  gggggggBggg   B BB   rH  BB  BBgggggggBBBB ggggggHH      gggg    g   ggBB             H     H
+gggggggggggggBBBBBBBBBBBBBBBrHHB BBBBBBBgggggggBBBBggg  H       ggggg  ggggggggBBB                  
+ggggggggggggg ggggBB       BrH BBBB ggBBBBBggg   gBBggg H  ggggggggggggggggggggggBBB  gggg      g   
+  gg ggg  gggg              rHH      ggggBBBBBggBBBB    HH   gggggggggg ggggggggggggBBBgggggg BBB   
+g ggggggggggg  H             rHHH    ggggggggBBBB BB     HH gggggggg      g  ggggggggggBBBBBBBBBBBBB
+ggggggggggggg  HH            BHr H HHggggggggggg         HH ggggggggg g      gggg   gg g gggggg BBB 
+ggggggggggg     HHH        HHH rHHHH ggggggggggg     gggHH    ggggggggggg                ggggggBB   
+                  HH    HHHHrrHHHH     gggggggg gggg ggHH   ggggggggggggg      ggg        ggggBB    
+gg                    HHH  rrB   HHHgggggggggggggggggggHgggggggggggggggggggggggggggggH     gBB    HH
