@@ -81,8 +81,7 @@ fn edit(path: &Path, change: impl FnOnce(&mut dyn TableLike) -> Result<()>) -> R
         .map_err(|error| config_error(error.to_string()))
 }
 
-/// Serializes edits across processes, such as the TUI and a CLI command. The lock file stays:
-/// after a removal, two processes could lock two different files.
+/// The lock file stays: after a removal, two processes could lock two different files.
 fn lock(config: &Path) -> io::Result<File> {
     let mut name = config.as_os_str().to_owned();
     name.push(".lock");

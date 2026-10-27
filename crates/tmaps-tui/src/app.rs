@@ -173,7 +173,6 @@ impl App {
             .or(self.tile_error().map(|error| (Level::Error, error)))
     }
 
-    /// The newest error of a visible tile.
     fn tile_error(&self) -> Option<&str> {
         self.failed
             .values()
