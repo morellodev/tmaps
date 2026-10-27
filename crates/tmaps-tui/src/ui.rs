@@ -255,6 +255,9 @@ struct MapWidget<'a> {
 impl Widget for MapWidget<'_> {
     fn render(self, area: Rect, buf: &mut Buffer) {
         for (row, cells) in (area.y..area.bottom()).zip(self.canvas.rows()) {
+            // A space keeps the color of the cell before it: it shows no foreground, and each
+            // color change costs about 40 bytes of output.
+            let mut fg = self.palette.text();
             for (column, cell) in (area.x..area.right()).zip(cells) {
                 let Some(target) = buf.cell_mut((column, row)) else {
                     continue;
@@ -263,16 +266,15 @@ impl Widget for MapWidget<'_> {
                     (0, Some(Class::Water)) if self.palette.is_mono() => MONO_WATER,
                     _ => cell.symbol(),
                 };
-                target
-                    .set_char(symbol)
-                    .set_fg(
-                        cell.fg
-                            .map_or(self.palette.text(), |class| self.palette.line(class)),
-                    )
-                    .set_bg(
-                        cell.bg
-                            .map_or(self.palette.background(), |class| self.palette.area(class)),
-                    );
+                if symbol != ' ' {
+                    fg = cell
+                        .fg
+                        .map_or(self.palette.text(), |class| self.palette.line(class));
+                }
+                target.set_char(symbol).set_fg(fg).set_bg(
+                    cell.bg
+                        .map_or(self.palette.background(), |class| self.palette.area(class)),
+                );
                 if cell.fg == Some(Class::Route) {
                     target.set_style(Style::new().add_modifier(Modifier::BOLD));
                 }
@@ -1613,6 +1615,28 @@ mod tests {
             Instant::now(),
         );
         app
+    }
+
+    #[test]
+    fn blank_cell_keeps_the_color_of_the_line_before_it() {
+        let view = View::new(LatLon::new(45.4642, 9.19).unwrap(), 14.0);
+        let points = [0.5, 5.5].map(|x| view.point_at(x, 6.0, 16.0, 24.0));
+        let route = tmaps_core::render::RouteLine {
+            points: &points,
+            selected: true,
+        };
+        let canvas = tmaps_core::render::render(view, 8, 6, 14, &[route], |_| None);
+        let palette = Palette::new(Depth::Rgb, Shade::Dark);
+        let area = Rect::new(0, 0, 8, 6);
+        let mut buffer = Buffer::empty(area);
+        MapWidget {
+            canvas: &canvas,
+            palette,
+            markers: Vec::new(),
+            dim: false,
+        }
+        .render(area, &mut buffer);
+        assert_eq!(buffer[(5, 1)].fg, palette.line(Class::Route));
     }
 
     #[test]

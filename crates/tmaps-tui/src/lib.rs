@@ -11,15 +11,19 @@ mod services;
 mod trip;
 mod ui;
 
-use std::io;
+use std::io::{self, BufWriter, Stdout};
 use std::path::Path;
 use std::sync::Arc;
+use std::task::Poll;
 use std::time::{Duration, Instant};
 
-use crossterm::event::{DisableMouseCapture, EnableMouseCapture, EventStream};
+use crossterm::event::{DisableMouseCapture, EnableMouseCapture, Event, EventStream};
 use crossterm::execute;
+use crossterm::terminal::{
+    BeginSynchronizedUpdate, EndSynchronizedUpdate, EnterAlternateScreen, enable_raw_mode,
+};
 use futures_util::StreamExt;
-use ratatui::DefaultTerminal;
+use ratatui::backend::CrosstermBackend;
 use tmaps_core::config::{Config, Paths, Units};
 use tmaps_core::http;
 use tmaps_core::providers::photon::Photon;
@@ -70,9 +74,9 @@ pub async fn run(config: &Config, config_file: &Path, paths: &Paths) -> Result<(
     );
     let palette = Palette::detect(config.theme);
 
-    let mut terminal = ratatui::try_init().inspect_err(|_| ratatui::restore())?;
     let panicked = Arc::new(Notify::new());
     install_panic_hook(Arc::clone(&panicked));
+    let mut terminal = init_terminal().inspect_err(|_| ratatui::restore())?;
     let result = match execute!(io::stdout(), EnableMouseCapture) {
         Ok(()) => {
             let channels = Channels {
@@ -85,18 +89,30 @@ pub async fn run(config: &Config, config_file: &Path, paths: &Paths) -> Result<(
         }
         Err(error) => Err(error.into()),
     };
-    let _ = execute!(io::stdout(), DisableMouseCapture);
+    // The drop flushes the rest of the buffer while the alternate screen is still active.
+    drop(terminal);
+    let _ = execute!(io::stdout(), EndSynchronizedUpdate, DisableMouseCapture);
     ratatui::restore();
     result?;
     saved_view::save(&paths.state_dir, app.view()).map_err(Error::SaveView)
 }
 
-/// `ratatui::try_init` restores the screen on a panic, but not the mouse mode. After the
-/// restore the map cannot continue, also when tokio catches the panic of a task.
+type Terminal = ratatui::Terminal<CrosstermBackend<BufWriter<Stdout>>>;
+
+/// Does the setup of `ratatui::try_init`, but with a `BufWriter`: `stdout()` is a `LineWriter`
+/// with a 1 KiB buffer, so a frame of a pan would go to the terminal in hundreds of writes.
+fn init_terminal() -> io::Result<Terminal> {
+    enable_raw_mode()?;
+    execute!(io::stdout(), EnterAlternateScreen)?;
+    Terminal::new(CrosstermBackend::new(BufWriter::new(io::stdout())))
+}
+
+/// After the restore the map cannot continue, also when tokio catches the panic of a task.
 fn install_panic_hook(panicked: Arc<Notify>) {
     let hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
-        let _ = execute!(io::stdout(), DisableMouseCapture);
+        let _ = execute!(io::stdout(), EndSynchronizedUpdate, DisableMouseCapture);
+        ratatui::restore();
         hook(info);
         panicked.notify_one();
     }));
@@ -114,7 +130,7 @@ struct Channels<'a> {
 }
 
 async fn event_loop(
-    terminal: &mut DefaultTerminal,
+    terminal: &mut Terminal,
     app: &mut App,
     channels: Channels<'_>,
     palette: Palette,
@@ -148,19 +164,41 @@ async fn event_loop(
             services.send(request);
         }
         if dirty {
+            // The terminal shows the frame only when it is complete (DEC mode 2026). Terminals
+            // without the mode ignore it. `execute!` sends the start now, so that the buffer is
+            // empty if the draw panics: the drop must not send it after the restore.
+            execute!(terminal.backend_mut(), BeginSynchronizedUpdate)?;
             let mut regions = None;
             terminal.draw(|frame| regions = Some(ui::draw(frame, app, palette, units)))?;
+            execute!(terminal.backend_mut(), EndSynchronizedUpdate)?;
             app.set_regions(regions.unwrap_or_default());
         }
         let deadline = app.next_deadline();
         dirty = tokio::select! {
             biased;
             () = panicked.notified() => return Err(Error::Panic),
-            event = events.next() => match event {
-                Some(Ok(event)) => app.handle(&event),
-                Some(Err(error)) => return Err(error.into()),
-                None => return Ok(()),
-            },
+            mut event = events.next() => {
+                // A drag or a scroll queues many mouse events, and one frame shows them all. A
+                // key or a resize can change the layout, so the next event needs a new frame.
+                let mut dirty = false;
+                loop {
+                    let mouse = matches!(event, Some(Ok(Event::Mouse(_))));
+                    match event {
+                        Some(Ok(event)) => dirty |= app.handle(&event),
+                        Some(Err(error)) => return Err(error.into()),
+                        None => return Ok(()),
+                    }
+                    if !mouse || app.should_quit() {
+                        break dirty;
+                    }
+                    // `poll!`, not `now_or_never`: `EventStream` keeps the waker of its first
+                    // pending poll, and a no-op waker would lose the wakeup of the next input.
+                    match futures_util::poll!(events.next()) {
+                        Poll::Ready(next) => event = next,
+                        Poll::Pending => break dirty,
+                    }
+                }
+            }
             Some(message) = receiver.recv() => {
                 let now = Instant::now();
                 app.receive(message, now);
