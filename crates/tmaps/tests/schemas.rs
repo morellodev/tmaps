@@ -2,7 +2,7 @@ use std::path::PathBuf;
 use std::{env, fs};
 
 fn schemas_dir() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../schemas")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../skills/tmaps/assets/schemas")
 }
 
 #[test]

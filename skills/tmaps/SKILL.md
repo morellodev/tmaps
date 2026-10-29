@@ -18,7 +18,7 @@ description: Directions, travel times, and geocoding from OpenStreetMap with the
 | Save a location for later | `tmaps places add NAME LOCATION`, then use `@NAME` |
 
 Use `eta` when you only need time and distance: its output is small. Use `route` for the steps.
-Run `tmaps <command> --help` for every flag.
+Run `tmaps <command> --help` for every flag. For the JSON fields, the error kinds, and the exit codes, read [references/cli-contract.md](references/cli-contract.md).
 
 ## Locations
 

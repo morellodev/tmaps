@@ -40,6 +40,7 @@ impl fmt::Display for Mode {
     }
 }
 
+/// Has no departure time: Valhalla gives no alternates for a time-dependent route.
 #[derive(Debug, Clone, PartialEq)]
 pub struct RouteRequest {
     pub from: LatLon,

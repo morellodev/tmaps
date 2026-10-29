@@ -69,7 +69,10 @@ fn json(bytes: &[u8]) -> Value {
 
 /// Returns the validation errors of `document` against the stored schema `name`.
 fn schema_errors(name: &str, document: &Value) -> Vec<String> {
-    let path = format!("{}/../../schemas/{name}.json", env!("CARGO_MANIFEST_DIR"));
+    let path = format!(
+        "{}/../../skills/tmaps/assets/schemas/{name}.json",
+        env!("CARGO_MANIFEST_DIR")
+    );
     let schema: Value = serde_json::from_str(&fs::read_to_string(path).unwrap()).unwrap();
     let validator = jsonschema::validator_for(&schema).unwrap();
     validator
