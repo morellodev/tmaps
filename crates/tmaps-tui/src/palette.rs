@@ -74,7 +74,7 @@ impl Palette {
         match class {
             Class::Green => self.color(([30, 50, 26], 22), ([205, 230, 172], 187)),
             Class::Water => self.color(([20, 36, 66], 17), ([192, 220, 245], 153)),
-            Class::Building => self.color(([56, 55, 62], 237), ([220, 214, 208], 188)),
+            Class::Building => self.color(([40, 42, 56], 236), ([220, 214, 208], 188)),
             _ => self.background(),
         }
     }
