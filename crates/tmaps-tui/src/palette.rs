@@ -287,19 +287,22 @@ mod tests {
 
     /// The WCAG relative luminance of an sRGB color.
     fn luminance(color: Color) -> f64 {
-        let Color::Rgb(r, g, b) = color else {
-            panic!("not an RGB color: {color:?}")
-        };
-        0.2126 * linear(r) + 0.7152 * linear(g) + 0.0722 * linear(b)
+        let [r, g, b] = linear_rgb(color);
+        0.2126 * r + 0.7152 * g + 0.0722 * b
     }
 
-    fn linear(channel: u8) -> f64 {
-        let c = f64::from(channel) / 255.0;
-        if c <= 0.040_45 {
-            c / 12.92
-        } else {
-            ((c + 0.055) / 1.055).powf(2.4)
-        }
+    fn linear_rgb(color: Color) -> [f64; 3] {
+        let Color::Rgb(r, g, b) = rgb(color) else {
+            panic!("not an RGB color: {color:?}")
+        };
+        [r, g, b].map(|channel| {
+            let c = f64::from(channel) / 255.0;
+            if c <= 0.040_45 {
+                c / 12.92
+            } else {
+                ((c + 0.055) / 1.055).powf(2.4)
+            }
+        })
     }
 
     /// The xterm values of the 256-color palette, from index 16.
@@ -322,59 +325,52 @@ mod tests {
     }
 
     fn contrast(a: Color, b: Color) -> f64 {
-        let (a, b) = (rgb(a), rgb(b));
         let (a, b) = (luminance(a), luminance(b));
         (a.max(b) + 0.05) / (a.min(b) + 0.05)
     }
 
-    const LINES: [Class; 9] = [
-        Class::Boundary,
-        Class::Waterway,
-        Class::Rail,
-        Class::Path,
-        Class::MinorRoad,
-        Class::MajorRoad,
-        Class::Highway,
-        Class::Route,
-        Class::Alternative,
-    ];
-
-    const LABELS: [LabelClass; 8] = [
-        LabelClass::Country,
-        LabelClass::State,
-        LabelClass::City,
-        LabelClass::Town,
-        LabelClass::Village,
-        LabelClass::Suburb,
-        LabelClass::Water,
-        LabelClass::Road,
-    ];
-
-    /// Lines and labels show on the background and on all areas.
-    fn fills(palette: Palette) -> [Color; 4] {
-        [
-            palette.background(),
-            palette.area(Class::Green),
-            palette.area(Class::Water),
-            palette.area(Class::Building),
-        ]
+    /// The crosshair and the lines, which show on top of the fills.
+    fn marks(palette: Palette) -> Vec<Color> {
+        let lines = Class::ALL.into_iter().filter(|class| !class.is_area());
+        let lines = lines.map(|class| palette.line(class));
+        [palette.crosshair()].into_iter().chain(lines).collect()
     }
 
-    /// Returns the colors with less contrast than `minimum` on a fill.
+    fn labels(palette: Palette) -> Vec<Color> {
+        [
+            LabelClass::Country,
+            LabelClass::State,
+            LabelClass::City,
+            LabelClass::Town,
+            LabelClass::Village,
+            LabelClass::Suburb,
+            LabelClass::Water,
+            LabelClass::Road,
+        ]
+        .into_iter()
+        .filter_map(|class| palette.label(class).fg)
+        .collect()
+    }
+
+    /// Returns the colors with less contrast than `minimum` on the background or on an area.
     fn low_contrast(
-        colors: impl Fn(Palette) -> Vec<Color>,
+        colors: fn(Palette) -> Vec<Color>,
         minimum: f64,
     ) -> Vec<(Palette, Color, Color, f64)> {
-        palettes()
-            .flat_map(|palette| {
-                colors(palette).into_iter().flat_map(move |color| {
-                    fills(palette).into_iter().filter_map(move |fill| {
-                        let ratio = contrast(color, fill);
-                        (ratio < minimum).then_some((palette, color, fill, ratio))
-                    })
-                })
-            })
-            .collect()
+        let mut low = Vec::new();
+        for palette in palettes() {
+            let areas =
+                [Class::Green, Class::Water, Class::Building].map(|class| palette.area(class));
+            for color in colors(palette) {
+                for fill in [palette.background()].into_iter().chain(areas) {
+                    let ratio = contrast(color, fill);
+                    if ratio < minimum {
+                        low.push((palette, color, fill, ratio));
+                    }
+                }
+            }
+        }
+        low
     }
 
     /// WCAG 2.2 SC 1.4.11 asks 3:1 for graphical objects.
@@ -383,30 +379,17 @@ mod tests {
         assert_eq!(low_contrast(marks, 3.0), []);
     }
 
-    /// The crosshair and the lines, which show on top of the fills.
-    fn marks(palette: Palette) -> Vec<Color> {
-        let lines = LINES.map(|class| palette.line(class));
-        [palette.crosshair()].into_iter().chain(lines).collect()
-    }
-
     /// WCAG 2.2 SC 1.4.3 asks 4.5:1 for text. A terminal has no large text.
     #[test]
     fn labels_have_4_5_to_1_contrast_with_the_background_and_the_areas() {
-        let low = low_contrast(
-            |palette| {
-                LABELS
-                    .iter()
-                    .filter_map(|&class| palette.label(class).fg)
-                    .collect()
-            },
-            4.5,
-        );
-        assert_eq!(low, []);
+        assert_eq!(low_contrast(labels, 4.5), []);
     }
 
-    /// Protanopia, deuteranopia and tritanopia in the model of Machado, Oliveira and Fernandes
-    /// (2009) at severity 1, for linear sRGB: <https://www.inf.ufrgs.br/~oliveira/pubs_files/CVD_Simulation/CVD_Simulation.html>.
-    const DICHROMACIES: [[[f64; 3]; 3]; 3] = [
+    /// Normal vision, then protanopia, deuteranopia and tritanopia in the model of Machado,
+    /// Oliveira and Fernandes (2009) at severity 1, for linear sRGB:
+    /// <https://www.inf.ufrgs.br/~oliveira/pubs_files/CVD_Simulation/CVD_Simulation.html>.
+    const VISIONS: [[[f64; 3]; 3]; 4] = [
+        [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
         [
             [0.152_286, 1.052_583, -0.204_868],
             [0.114_503, 0.786_281, 0.099_216],
@@ -423,13 +406,6 @@ mod tests {
             [0.004_733, 0.691_367, 0.303_900],
         ],
     ];
-
-    fn linear_rgb(color: Color) -> [f64; 3] {
-        let Color::Rgb(r, g, b) = rgb(color) else {
-            panic!("not an RGB color: {color:?}")
-        };
-        [r, g, b].map(linear)
-    }
 
     fn multiply(matrix: &[[f64; 3]; 3], vector: [f64; 3]) -> [f64; 3] {
         matrix.map(|row| row.iter().zip(vector).map(|(m, v)| m * v).sum())
@@ -451,16 +427,13 @@ mod tests {
         multiply(&TO_LAB, lms.map(f64::cbrt))
     }
 
-    /// The smallest Oklab distance between two colors, for normal vision and each dichromacy.
+    /// The smallest Oklab distance between two colors over all [`VISIONS`].
     fn smallest_difference(a: Color, b: Color) -> f64 {
         let (a, b) = (linear_rgb(a), linear_rgb(b));
-        let views = DICHROMACIES
+        VISIONS
             .iter()
-            .map(|matrix| (multiply(matrix, a), multiply(matrix, b)))
-            .chain([(a, b)]);
-        views
-            .map(|(a, b)| {
-                let (a, b) = (oklab(a), oklab(b));
+            .map(|vision| {
+                let (a, b) = (oklab(multiply(vision, a)), oklab(multiply(vision, b)));
                 a.iter()
                     .zip(b)
                     .map(|(a, b)| (a - b).powi(2))
