@@ -28,8 +28,7 @@ pub enum Shade {
     Light,
 }
 
-/// A true color and a near color in the 256-color palette. The index is not always the nearest
-/// one, because it must also keep the contrast and the color-blind separation of the tests.
+/// A true color and a near 256-color index, which must also pass the contrast tests.
 type Spec = ([u8; 3], u8);
 
 impl Palette {
@@ -329,7 +328,6 @@ mod tests {
         (a.max(b) + 0.05) / (a.min(b) + 0.05)
     }
 
-    /// The crosshair and the lines, which show on top of the fills.
     fn marks(palette: Palette) -> Vec<Color> {
         let lines = Class::ALL.into_iter().filter(|class| !class.is_area());
         let lines = lines.map(|class| palette.line(class));
@@ -352,37 +350,47 @@ mod tests {
         .collect()
     }
 
-    /// Returns the colors with less contrast than `minimum` on the background or on an area.
-    fn low_contrast(
-        colors: fn(Palette) -> Vec<Color>,
-        minimum: f64,
-    ) -> Vec<(Palette, Color, Color, f64)> {
-        let mut low = Vec::new();
-        for palette in palettes() {
-            let areas =
-                [Class::Green, Class::Water, Class::Building].map(|class| palette.area(class));
-            for color in colors(palette) {
-                for fill in [palette.background()].into_iter().chain(areas) {
-                    let ratio = contrast(color, fill);
-                    if ratio < minimum {
-                        low.push((palette, color, fill, ratio));
-                    }
-                }
-            }
-        }
-        low
+    fn fills(palette: Palette) -> [Color; 4] {
+        [
+            palette.background(),
+            palette.area(Class::Green),
+            palette.area(Class::Water),
+            palette.area(Class::Building),
+        ]
     }
 
     /// WCAG 2.2 SC 1.4.11 asks 3:1 for graphical objects.
     #[test]
     fn map_lines_have_3_to_1_contrast_with_the_background_and_the_areas() {
-        assert_eq!(low_contrast(marks, 3.0), []);
+        let mut low = Vec::new();
+        for palette in palettes() {
+            for color in marks(palette) {
+                for fill in fills(palette) {
+                    let ratio = contrast(color, fill);
+                    if ratio < 3.0 {
+                        low.push((palette, color, fill, ratio));
+                    }
+                }
+            }
+        }
+        assert_eq!(low, []);
     }
 
     /// WCAG 2.2 SC 1.4.3 asks 4.5:1 for text. A terminal has no large text.
     #[test]
     fn labels_have_4_5_to_1_contrast_with_the_background_and_the_areas() {
-        assert_eq!(low_contrast(labels, 4.5), []);
+        let mut low = Vec::new();
+        for palette in palettes() {
+            for color in labels(palette) {
+                for fill in fills(palette) {
+                    let ratio = contrast(color, fill);
+                    if ratio < 4.5 {
+                        low.push((palette, color, fill, ratio));
+                    }
+                }
+            }
+        }
+        assert_eq!(low, []);
     }
 
     /// Normal vision, then protanopia, deuteranopia and tritanopia in the model of Machado,
@@ -427,7 +435,6 @@ mod tests {
         multiply(&TO_LAB, lms.map(f64::cbrt))
     }
 
-    /// The smallest Oklab distance between two colors over all [`VISIONS`].
     fn smallest_difference(a: Color, b: Color) -> f64 {
         let (a, b) = (linear_rgb(a), linear_rgb(b));
         VISIONS
