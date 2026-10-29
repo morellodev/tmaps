@@ -121,6 +121,8 @@ impl Input {
             KeyCode::Char('k') if control => self.remove(self.cursor..self.text.len()),
             KeyCode::Char('w') if control => self.remove(self.previous_word()..self.cursor),
             KeyCode::Backspace if alt => self.remove(self.previous_word()..self.cursor),
+            KeyCode::Delete if control || alt => self.remove(self.cursor..self.next_word()),
+            KeyCode::Char('d') if alt => self.remove(self.cursor..self.next_word()),
             KeyCode::Backspace => self.remove(self.previous_grapheme()..self.cursor),
             KeyCode::Delete => self.remove(self.cursor..self.next_grapheme()),
             KeyCode::Char(c) if !control && !alt => {
@@ -337,6 +339,25 @@ mod tests {
     #[test]
     fn alt_backspace_removes_the_word_before_the_cursor() {
         assert_eq!(edited("via è|", alt(KeyCode::Backspace)), "via |");
+    }
+
+    #[test]
+    fn ctrl_delete_and_alt_d_remove_the_word_after_the_cursor() {
+        assert_eq!(
+            edited(
+                "piazza |del duomo",
+                key(KeyCode::Delete, KeyModifiers::CONTROL)
+            ),
+            "piazza | duomo"
+        );
+        assert_eq!(
+            edited("piazza| del duomo", alt(KeyCode::Delete)),
+            "piazza| duomo"
+        );
+        assert_eq!(
+            edited("piazza| del duomo", alt(KeyCode::Char('d'))),
+            "piazza| duomo"
+        );
     }
 
     #[test]

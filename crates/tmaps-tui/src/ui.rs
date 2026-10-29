@@ -54,51 +54,48 @@ const SELECTED: &str = "▶ ";
 /// A key and what it does.
 type Hint = (&'static str, &'static str);
 type HelpGroup = (&'static str, &'static [Hint]);
-const HELP: [HelpGroup; 5] = [
-    (
-        "Map",
-        &[
-            ("←↓↑→  hjkl", "pan"),
-            ("Shift + pan", "pan faster"),
-            ("+ -  wheel", "zoom"),
-            ("drag", "pan"),
-        ],
-    ),
-    (
-        "Places",
-        &[
-            ("/", "search, @name: saved places"),
-            ("m", "save the place at +"),
-            ("@  '", "go to a saved place"),
-            ("Ctrl-S", "save a search result"),
-            ("Ctrl-D", "remove a saved place"),
-        ],
-    ),
-    (
-        "Text",
-        &[
-            ("←→  Alt-←→", "move one character or word"),
-            ("Ctrl-A  Ctrl-E", "go to the start or end"),
-            ("Ctrl-U  Ctrl-K", "remove to the start or end"),
-            ("Ctrl-W", "remove the word before"),
-        ],
-    ),
-    (
-        "Route",
-        &[
-            ("s  e", "start or end at +"),
-            ("x  c", "swap or clear the points"),
-            ("1 2 3", "car, bike, foot"),
-            ("Tab  Shift-Tab", "next or previous route"),
-            ("]  [", "next or previous step"),
-            ("p", "show or hide the panel"),
-        ],
-    ),
-    (
-        "App",
-        &[("?  Esc  q", "close this help"), ("q  Ctrl-C", "quit")],
-    ),
-];
+const MAP: HelpGroup = (
+    "Map",
+    &[
+        ("←↓↑→  hjkl", "pan, or drag the map"),
+        ("Shift + pan", "pan faster"),
+        ("+ -  wheel", "zoom"),
+    ],
+);
+const PLACES: HelpGroup = (
+    "Places",
+    &[
+        ("/", "search, @name: saved places"),
+        ("m", "save the place at +"),
+        ("@  '", "go to a saved place"),
+        ("Ctrl-S/D", "save or remove a result"),
+    ],
+);
+const TEXT: HelpGroup = (
+    "Text",
+    &[
+        ("←→  Alt-←→", "move a character or word"),
+        ("Ctrl-A/E", "go to the start or end"),
+        ("Ctrl-U/K", "remove to the start or end"),
+        ("Ctrl-W", "remove the word before"),
+    ],
+);
+const ROUTE: HelpGroup = (
+    "Route",
+    &[
+        ("s  e", "start or end at +"),
+        ("x  c", "swap or clear the points"),
+        ("1 2 3", "car, bike, foot"),
+        ("(Shift-)Tab", "next or previous route"),
+        ("]  [", "next or previous step"),
+        ("p", "show or hide the panel"),
+    ],
+);
+const APP: HelpGroup = (
+    "App",
+    &[("?", "show or hide this help"), ("q  Ctrl-C", "quit")],
+);
+const HELP: [HelpGroup; 5] = [MAP, PLACES, TEXT, ROUTE, APP];
 
 struct Areas {
     map: Rect,
@@ -1026,13 +1023,13 @@ fn place_detail(place: &Place, center: LatLon, units: Units) -> String {
 
 /// The label at the left, cut with "…" when the detail at the right needs its room.
 fn item_line(label: &str, detail: &str, width: usize, palette: Palette) -> Line<'static> {
-    let detail_width = display_width(detail);
+    let detail_width = detail.width();
     let room = width.saturating_sub(detail_width + 2);
     if room < LABEL_MIN_WIDTH {
         return Line::from(cut(label, width));
     }
     let label = cut(label, room);
-    let gap = width.saturating_sub(display_width(&label) + detail_width);
+    let gap = width.saturating_sub(label.width() + detail_width);
     Line::from_iter([
         Span::raw(label),
         Span::raw(" ".repeat(gap)),
@@ -1042,13 +1039,13 @@ fn item_line(label: &str, detail: &str, width: usize, palette: Palette) -> Line<
 
 /// `text` in at most `width` columns. A cut text ends with "…".
 fn cut(text: &str, width: usize) -> String {
-    if display_width(text) <= width {
+    if text.width() <= width {
         return text.to_owned();
     }
     let mut kept = String::new();
     let mut used = 0;
     for grapheme in text.graphemes(true) {
-        let grapheme_width = display_width(grapheme);
+        let grapheme_width = grapheme.width();
         if used + grapheme_width + 1 > width {
             break;
         }
@@ -1064,16 +1061,16 @@ fn cut(text: &str, width: usize) -> String {
 
 /// The end of `text` in at most `width` columns. A cut text starts with "…".
 fn tail(text: &str, width: usize) -> String {
-    if display_width(text) <= width {
+    if text.width() <= width {
         return text.to_owned();
     }
     if width == 0 {
         return String::new();
     }
     let mut kept = Vec::new();
-    let mut used = display_width("…");
+    let mut used = "…".width();
     for grapheme in text.graphemes(true).rev() {
-        let grapheme_width = display_width(grapheme);
+        let grapheme_width = grapheme.width();
         if used + grapheme_width > width {
             break;
         }
@@ -1083,25 +1080,22 @@ fn tail(text: &str, width: usize) -> String {
     std::iter::once("…").chain(kept.into_iter().rev()).collect()
 }
 
-/// The width that ratatui gives to `text`. It counts a sequence such as `❤️` as one wide
-/// character, but `textwrap::core::display_width` adds the widths of its chars.
-fn display_width(text: &str) -> usize {
-    text.width()
-}
-
 /// The part of `input` that fits in `width` columns, and the column of the cursor in it. When
 /// the text does not fit, up to a third of the width, and at least the character at the
 /// cursor, shows the text after the cursor.
 fn input_window(input: &Input, width: usize) -> (String, usize) {
     let (before, after) = (input.before_cursor(), input.after_cursor());
     // The cursor after the last character needs a column too.
-    if display_width(input.as_str()) < width {
-        return (input.as_str().to_owned(), display_width(before));
+    if input.as_str().width() < width {
+        return (input.as_str().to_owned(), before.width());
     }
-    let next = after.graphemes(true).next().map_or(1, display_width);
-    let right = display_width(after).min(width / 3).max(next);
+    let next = after
+        .graphemes(true)
+        .next()
+        .map_or(1, UnicodeWidthStr::width);
+    let right = after.width().min(width / 3).max(next);
     let left = tail(before, width.saturating_sub(right));
-    let cursor = display_width(left.as_str());
+    let cursor = left.width();
     let right = cut(after, width.saturating_sub(cursor));
     (left + &right, cursor)
 }
@@ -1158,10 +1152,10 @@ fn draw_prompt(frame: &mut Frame, view: &PromptView, palette: Palette, area: Rec
         Constraint::Fill(1),
     ]));
     if let Some((prefix, input)) = &view.input {
-        let room = usize::from(input_area.width).saturating_sub(display_width(prefix));
+        let room = usize::from(input_area.width).saturating_sub(prefix.width());
         let (shown, cursor) = input_window(input, room);
         frame.render_widget(Line::from(format!("{prefix}{shown}")), input_area);
-        let column = u16::try_from(display_width(prefix) + cursor).unwrap_or(u16::MAX);
+        let column = u16::try_from(prefix.width() + cursor).unwrap_or(u16::MAX);
         if input_area.width > 0 {
             frame.set_cursor_position((
                 input_area.x + column.min(input_area.width - 1),
@@ -1205,8 +1199,8 @@ enum HelpRow {
 impl HelpRow {
     fn width(&self, key_width: usize) -> usize {
         match self {
-            Self::Heading(name) => display_width(name) + 1,
-            Self::Key(_, action) => key_width + display_width(action) + 4,
+            Self::Heading(name) => name.width() + 1,
+            Self::Key(_, action) => key_width + action.width() + 4,
             Self::Blank => 0,
         }
     }
@@ -1279,7 +1273,7 @@ fn help_layout(area: Rect) -> Vec<Vec<HelpRow>> {
     let key_width = help_key_width();
     [
         vec![grouped(&HELP)],
-        vec![grouped(&HELP[..2]), grouped(&HELP[2..])],
+        vec![grouped(&[MAP, ROUTE, APP]), grouped(&[PLACES, TEXT])],
     ]
     .into_iter()
     .find(|columns| {
@@ -1654,10 +1648,15 @@ mod tests {
     }
 
     #[test]
+    fn help_fits_80x22_in_one_list_and_83_columns_in_two() {
+        let two_columns = help_layout(help_area(Rect::new(0, 0, 83, 24)));
+        assert_eq!((help_overflow(80, 22), two_columns.len()), (0, 2));
+    }
+
+    #[test]
     fn help_overflow_counts_the_hidden_rows() {
-        // 21 keys in 24 rows with the wrapped descriptions, and 11 visible rows: 13 above the
-        // status line, less the borders.
-        assert_eq!(help_overflow(44, 14), 13);
+        // 19 rows of keys, and 11 visible rows: 13 above the status line, less the borders.
+        assert_eq!(help_overflow(44, 14), 8);
     }
 
     fn type_keys(app: &mut App, keys: &str) {

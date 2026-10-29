@@ -250,7 +250,7 @@ impl App {
         match event {
             Event::Key(key) if key.kind == KeyEventKind::Press => {
                 let had_notice = self.notice.take().is_some();
-                self.on_key(*key) || had_notice
+                self.on_key(without_alt_gr(*key)) || had_notice
             }
             Event::Mouse(mouse) => self.on_mouse(*mouse),
             Event::Resize(..) => true,
@@ -784,6 +784,16 @@ impl App {
         let (width, height) = self.map_size_dots();
         self.view = self.view.pan(x * width, y * height);
     }
+}
+
+/// Windows reports `AltGr` as Ctrl+Alt. `AltGr` types characters such as `@` and `[` on many
+/// layouts, so a character with both modifiers is a typed character.
+fn without_alt_gr(mut key: KeyEvent) -> KeyEvent {
+    let alt_gr = KeyModifiers::CONTROL | KeyModifiers::ALT;
+    if matches!(key.code, KeyCode::Char(_)) && key.modifiers.contains(alt_gr) {
+        key.modifiers.remove(alt_gr);
+    }
+    key
 }
 
 fn saved_places(places: &BTreeMap<String, LatLon>, query: &str) -> Vec<Place> {
@@ -1912,6 +1922,15 @@ mod tests {
             (removing(&app), app.take_requests(), app.should_quit()),
             (None, Vec::new(), false)
         );
+    }
+
+    #[test]
+    fn alt_gr_characters_are_typed() {
+        let mut app = ready_app();
+        let alt_gr = KeyModifiers::CONTROL | KeyModifiers::ALT;
+        app.handle(&press(KeyCode::Char('@'), alt_gr));
+        app.handle(&press(KeyCode::Char('['), alt_gr));
+        assert_matches!(app.prompt(), Some(Prompt::Search(search)) if search.text.as_str() == "@[");
     }
 
     #[test]
