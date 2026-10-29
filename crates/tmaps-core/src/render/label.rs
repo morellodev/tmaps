@@ -210,6 +210,8 @@ pub(super) fn place<'a>(
         .collect();
     candidates.sort_by_key(|(_, candidate)| (candidate.class, candidate.rank));
     let (cursor_column, cursor_row) = cursor_cell(canvas.width(), canvas.height());
+    // A screen holds about 100 labels, so a linear scan of `taken` is fast enough without a
+    // spatial index.
     let mut taken = vec![Span {
         row: i32::from(cursor_row),
         start: i32::from(cursor_column),

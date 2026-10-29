@@ -4,7 +4,11 @@
 
 The map uses braille characters, so it works in each terminal that shows Unicode. It does not need a graphics protocol.
 
+Routes use free-flow speeds, without live traffic. tmaps does not plan public transit routes or give live GPS guidance.
+
 ## Install
+
+tmaps works on Linux and macOS. Windows is not supported.
 
 Install from source. You need Rust 1.96 or later.
 
@@ -30,7 +34,7 @@ tmaps eta --from 45.4642,9.19 --to @work
 tmaps places add work 45.4781,9.2256
 ```
 
-A location is `lat,lon`, a saved place `@name`, or free text. [`docs/agents.md`](docs/agents.md) gives the full contract: the JSON schemas, the exit codes, and the errors. [`skills/tmaps/SKILL.md`](skills/tmaps/SKILL.md) is a skill for AI agents.
+A location is `lat,lon`, a saved place `@name`, or free text. [`skills/tmaps/references/cli-contract.md`](skills/tmaps/references/cli-contract.md) gives the full contract: the JSON schemas, the exit codes, and the errors. [`skills/tmaps/SKILL.md`](skills/tmaps/SKILL.md) is a skill for AI agents.
 
 ## Configuration
 

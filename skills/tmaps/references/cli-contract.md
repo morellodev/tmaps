@@ -1,12 +1,12 @@
-# tmaps for AI agents
+# tmaps CLI contract
 
-This document is the contract of the `tmaps` CLI for scripts and AI agents. For a short procedure that an agent can load, use the skill in [`skills/tmaps/SKILL.md`](../skills/tmaps/SKILL.md).
+This document is the contract of the `tmaps` CLI for scripts and AI agents: the JSON documents, the locations, the errors, and the exit codes.
 
 ## Output
 
 - stdout gives JSON when it is not a terminal, and text when it is a terminal. `--format json|text` overrides this.
 - Each JSON document is one line and has a `schema` field, for example `"tmaps/route@1"`. A change that is not compatible increases the number after `@`.
-- The JSON Schema of each document is in [`schemas/`](../schemas). The file name is the schema name without `tmaps/`, for example `schemas/route@1.json`.
+- The JSON Schema of each document is in [`schemas/`](https://github.com/morellodev/tmaps/tree/main/schemas). The file name is the schema name without `tmaps/`, for example `schemas/route@1.json`.
 - Each point is an object: `{"lat": 45.4642, "lon": 9.19}`. Only GeoJSON geometry uses `[lon, lat]` positions.
 - JSON always uses SI units: meters (`*_m`) and seconds (`*_s`). `--units` changes only the text output.
 - `--lang` (or `lang` in the config file) sets the language of route instructions. Photon translates place names only for `de`, `en`, and `fr`. An invalid tag is a usage error.
@@ -59,20 +59,7 @@ Errors go to stderr, in the output format: `{"schema": "tmaps/error@1", "error":
 
 ## Configuration
 
-The config file is `~/.config/tmaps/config.toml`. `--config PATH` or the `TMAPS_CONFIG` environment variable selects another file.
-
-```toml
-units = "metric"   # text output only
-lang = "en-US"     # place names and instructions
-theme = "auto"     # map colors: auto, dark, or light
-
-[endpoints]
-photon = "https://photon.komoot.io"
-valhalla = "https://valhalla1.openstreetmap.de"
-
-[places]
-home = "45.4642,9.19"
-```
+The config file is `~/.config/tmaps/config.toml`. `--config PATH` or the `TMAPS_CONFIG` environment variable selects another file. The [README](https://github.com/morellodev/tmaps#configuration) lists all keys.
 
 ## Fair use
 

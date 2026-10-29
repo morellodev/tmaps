@@ -42,6 +42,7 @@ impl Valhalla {
     /// - [`Error::Network`] if the request fails.
     /// - [`Error::Provider`] for other Valhalla errors or an unexpected body.
     pub async fn route(&self, request: &RouteRequest) -> Result<Vec<Route>> {
+        // No departure time: Valhalla gives no alternates for a time-dependent route.
         let body = RouteBody {
             locations: [request.from.into(), request.to.into()],
             costing: costing(request.mode),
