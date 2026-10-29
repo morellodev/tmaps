@@ -286,8 +286,8 @@ pub(super) fn to_dots(placement: &VisibleTile, [x, y]: [f32; 2]) -> DotPoint {
 /// Each edge adds crossings only for the rows that it spans: testing every edge on every row is
 /// slow for merged multipolygons, which can have thousands of rings.
 ///
-/// A braille cell has one background color, so a finer fill, such as a triangulation, gives the
-/// same cells.
+/// A braille cell has one background color, so a cell is in or out as a whole. An area narrower
+/// than one cell can miss every cell center, and then it does not show.
 fn fill_rings(
     canvas: &mut Canvas,
     rings: impl IntoIterator<Item = impl IntoIterator<Item = DotPoint>>,

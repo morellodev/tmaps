@@ -78,6 +78,12 @@ cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
 cargo test --workspace --locked
 ```
 
+To test the MSRV (`rust-version` in `Cargo.toml`), run the tests in a container. `CI=true` stops insta from writing new snapshots into the read-only source.
+
+```sh
+docker run --rm -v "$PWD":/src:ro -w /src -e CARGO_TARGET_DIR=/tmp/target -e CI=true rust:<rust-version>-slim cargo test --workspace --locked
+```
+
 ## License
 
 [MIT](LICENSE)
