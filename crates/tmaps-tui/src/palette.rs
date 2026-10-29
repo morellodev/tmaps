@@ -97,7 +97,7 @@ impl Palette {
 
     /// The strong accent of the selected route, see [`Class::Route`].
     pub fn route(self) -> Color {
-        self.color(([80, 200, 255], 45), ([0, 60, 170], 19))
+        self.color(([80, 200, 255], 45), ([50, 60, 230], 21))
     }
 
     /// The start and end points: reversed, so that they show also without colors.

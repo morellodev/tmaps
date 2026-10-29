@@ -225,7 +225,7 @@ pub fn render<'a>(
                     fill_rings(&mut canvas, parts, class, drawn.bounds, &mut crossings);
                 } else {
                     for part in parts {
-                        draw_line(&mut canvas, part, class, drawn.bounds);
+                        draw_line(&mut canvas, part, class, drawn.bounds, Stroke::Thin);
                     }
                 }
             }
@@ -234,13 +234,13 @@ pub fn render<'a>(
     let (width_dots, height_dots) = (canvas.width_dots(), canvas.height_dots());
     for selected in [false, true] {
         for route in routes.iter().filter(|route| route.selected == selected) {
-            let class = if selected {
-                Class::Route
+            let (class, stroke) = if selected {
+                (Class::Route, Stroke::Wide)
             } else {
-                Class::Alternative
+                (Class::Alternative, Stroke::Thin)
             };
             let points = view.line_on_screen(route.points, width_dots, height_dots);
-            draw_line(&mut canvas, points, class, canvas_bounds);
+            draw_line(&mut canvas, points, class, canvas_bounds, stroke);
         }
     }
     label::place(
@@ -345,11 +345,19 @@ fn fill_rings(
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Stroke {
+    Thin,
+    /// Two dots wide, because a route as thin as the roads does not stand out from them.
+    Wide,
+}
+
 fn draw_line(
     canvas: &mut Canvas,
     points: impl IntoIterator<Item = DotPoint>,
     class: Class,
     bounds: Bounds,
+    stroke: Stroke,
 ) {
     let mut points = points.into_iter();
     let Some(mut start) = points.next() else {
@@ -361,16 +369,25 @@ fn draw_line(
         let Some(((x0, y0), (x1, y1))) = clip(segment.0, segment.1, bounds) else {
             continue;
         };
+        let flat = (x1 - x0).abs() >= (y1 - y0).abs();
         let steps = (x1 - x0).abs().max((y1 - y0).abs()).ceil().max(1.0);
         let mut step = 0.0;
         while step <= steps {
             let t = step / steps;
             #[expect(clippy::cast_possible_truncation, reason = "clipped to the canvas")]
-            canvas.set_dot(
+            let (x, y) = (
                 (x0 + t * (x1 - x0)).floor() as i64,
                 (y0 + t * (y1 - y0)).floor() as i64,
-                class,
             );
+            canvas.set_dot(x, y, class);
+            // The extra dot stays in the same cell: a route dot hides the map dots of its cell.
+            if stroke == Stroke::Wide {
+                if flat {
+                    canvas.set_dot(x, y ^ 1, class);
+                } else {
+                    canvas.set_dot(x ^ 1, y, class);
+                }
+            }
             step += 1.0;
         }
     }
@@ -520,8 +537,37 @@ mod tests {
             [(0.0, 1.5), (3.9, 1.5)],
             Class::MinorRoad,
             bounds,
+            Stroke::Thin,
         );
         assert_eq!(text(&canvas), ["⠒⠒"]);
+    }
+
+    #[test]
+    fn wide_flat_line_stays_inside_its_cells() {
+        let mut canvas = Canvas::new(2, 2);
+        let bounds = Bounds::of(&canvas);
+        draw_line(
+            &mut canvas,
+            [(0.0, 3.5), (3.9, 3.5)],
+            Class::Route,
+            bounds,
+            Stroke::Wide,
+        );
+        assert_eq!(text(&canvas), ["⣤⣤", "  "]);
+    }
+
+    #[test]
+    fn wide_steep_line_stays_inside_its_cell() {
+        let mut canvas = Canvas::new(2, 1);
+        let bounds = Bounds::of(&canvas);
+        draw_line(
+            &mut canvas,
+            [(1.5, 0.0), (1.5, 3.9)],
+            Class::Route,
+            bounds,
+            Stroke::Wide,
+        );
+        assert_eq!(text(&canvas), ["⣿ "]);
     }
 
     #[test]
