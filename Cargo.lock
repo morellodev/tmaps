@@ -3394,6 +3394,8 @@ dependencies = [
  "tmaps-core",
  "tokio",
  "toml",
+ "unicode-segmentation",
+ "unicode-width",
  "wiremock",
 ]
 

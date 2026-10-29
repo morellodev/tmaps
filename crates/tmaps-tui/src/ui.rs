@@ -10,7 +10,6 @@ use ratatui::widgets::{
     Block, BorderType, Clear, HighlightSpacing, List, ListItem, ListState, Padding, Paragraph,
     Scrollbar, ScrollbarOrientation, ScrollbarState, Widget,
 };
-use textwrap::core::display_width;
 use tmaps_core::LatLon;
 use tmaps_core::config::Units;
 use tmaps_core::format::{distance, duration};
@@ -18,10 +17,12 @@ use tmaps_core::geocode::Place;
 use tmaps_core::places::validate_name;
 use tmaps_core::render::{Canvas, Class, DOTS_PER_CELL_X, DOTS_PER_CELL_Y, View, cursor_cell};
 use tmaps_core::routing::{Maneuver, Mode, Route, Step};
+use unicode_segmentation::UnicodeSegmentation;
+use unicode_width::UnicodeWidthStr;
 
 use crate::app::{App, Level};
 use crate::palette::Palette;
-use crate::prompt::Prompt;
+use crate::prompt::{Input, Prompt};
 use crate::regions::{ListRegion, Regions};
 use crate::trip::{Routes, Trip, Waypoint};
 
@@ -53,44 +54,48 @@ const SELECTED: &str = "▶ ";
 /// A key and what it does.
 type Hint = (&'static str, &'static str);
 type HelpGroup = (&'static str, &'static [Hint]);
-const HELP: [HelpGroup; 4] = [
-    (
-        "Map",
-        &[
-            ("←↓↑→  hjkl", "pan"),
-            ("Shift + pan", "pan faster"),
-            ("+ -  wheel", "zoom"),
-            ("drag", "pan"),
-        ],
-    ),
-    (
-        "Places",
-        &[
-            ("/", "search, @name: saved places"),
-            ("m", "save the place at +"),
-            ("@  '", "go to a saved place"),
-            ("Ctrl-S", "save a search result"),
-            ("Ctrl-D", "remove a saved place"),
-            ("Ctrl-U", "clear the typed text"),
-            ("Ctrl-W", "remove the last word"),
-        ],
-    ),
-    (
-        "Route",
-        &[
-            ("s  e", "start or end at +"),
-            ("x  c", "swap or clear the points"),
-            ("1 2 3", "car, bike, foot"),
-            ("Tab", "next route"),
-            ("]  [", "next or previous step"),
-            ("p", "show or hide the panel"),
-        ],
-    ),
-    (
-        "App",
-        &[("?  Esc", "show or hide this help"), ("q  Ctrl-C", "quit")],
-    ),
-];
+const MAP: HelpGroup = (
+    "Map",
+    &[
+        ("←↓↑→  hjkl", "pan, or drag the map"),
+        ("Shift + pan", "pan faster"),
+        ("+ -  wheel", "zoom"),
+    ],
+);
+const PLACES: HelpGroup = (
+    "Places",
+    &[
+        ("/", "search, @name: saved places"),
+        ("m", "save the place at +"),
+        ("@  '", "go to a saved place"),
+        ("Ctrl-S/D", "save or remove a result"),
+    ],
+);
+const TEXT: HelpGroup = (
+    "Text",
+    &[
+        ("←→  Alt-←→", "move a character or word"),
+        ("Ctrl-A/E", "go to the start or end"),
+        ("Ctrl-U/K", "remove to the start or end"),
+        ("Ctrl-W", "remove the word before"),
+    ],
+);
+const ROUTE: HelpGroup = (
+    "Route",
+    &[
+        ("s  e", "start or end at +"),
+        ("x  c", "swap or clear the points"),
+        ("1 2 3", "car, bike, foot"),
+        ("(Shift-)Tab", "next or previous route"),
+        ("]  [", "next or previous step"),
+        ("p", "show or hide the panel"),
+    ],
+);
+const APP: HelpGroup = (
+    "App",
+    &[("?", "show or hide this help"), ("q  Ctrl-C", "quit")],
+);
+const HELP: [HelpGroup; 5] = [MAP, PLACES, TEXT, ROUTE, APP];
 
 struct Areas {
     map: Rect,
@@ -906,7 +911,7 @@ fn short_attribution(attribution: &str) -> String {
 struct PromptView {
     title: &'static str,
     /// A prefix, and the text that the user types.
-    input: Option<(&'static str, String)>,
+    input: Option<(&'static str, Input)>,
     /// A label, and a detail for the right side.
     items: Vec<(String, String)>,
     selected: Option<usize>,
@@ -937,7 +942,7 @@ fn prompt_view(
                 Some((format!("✗ {error} Type to try again."), palette.error()))
             } else if search.pending.is_some() {
                 Some((format!("{spinner} Searching…"), hint))
-            } else if search.text.trim().is_empty() {
+            } else if search.text.as_str().trim().is_empty() {
                 Some((
                     "Type a place, an address, or @name. Enter: go there.".to_owned(),
                     hint,
@@ -984,7 +989,7 @@ fn prompt_view(
                     "✗ Not a valid name. Use letters, digits, '-', and '_'.".to_owned(),
                     palette.error(),
                 )
-            } else if let Ok(existing) = validate_name(name)
+            } else if let Ok(existing) = validate_name(name.as_str())
                 && app.places().contains_key(existing)
             {
                 (
@@ -1018,13 +1023,13 @@ fn place_detail(place: &Place, center: LatLon, units: Units) -> String {
 
 /// The label at the left, cut with "…" when the detail at the right needs its room.
 fn item_line(label: &str, detail: &str, width: usize, palette: Palette) -> Line<'static> {
-    let detail_width = display_width(detail);
+    let detail_width = detail.width();
     let room = width.saturating_sub(detail_width + 2);
     if room < LABEL_MIN_WIDTH {
         return Line::from(cut(label, width));
     }
     let label = cut(label, room);
-    let gap = width.saturating_sub(display_width(&label) + detail_width);
+    let gap = width.saturating_sub(label.width() + detail_width);
     Line::from_iter([
         Span::raw(label),
         Span::raw(" ".repeat(gap)),
@@ -1034,18 +1039,18 @@ fn item_line(label: &str, detail: &str, width: usize, palette: Palette) -> Line<
 
 /// `text` in at most `width` columns. A cut text ends with "…".
 fn cut(text: &str, width: usize) -> String {
-    if display_width(text) <= width {
+    if text.width() <= width {
         return text.to_owned();
     }
     let mut kept = String::new();
     let mut used = 0;
-    for c in text.chars() {
-        let char_width = display_width(c.encode_utf8(&mut [0; 4]));
-        if used + char_width + 1 > width {
+    for grapheme in text.graphemes(true) {
+        let grapheme_width = grapheme.width();
+        if used + grapheme_width + 1 > width {
             break;
         }
-        kept.push(c);
-        used += char_width;
+        kept.push_str(grapheme);
+        used += grapheme_width;
     }
     if width == 0 {
         kept
@@ -1056,23 +1061,43 @@ fn cut(text: &str, width: usize) -> String {
 
 /// The end of `text` in at most `width` columns. A cut text starts with "…".
 fn tail(text: &str, width: usize) -> String {
-    if display_width(text) <= width {
+    if text.width() <= width {
         return text.to_owned();
     }
     if width == 0 {
         return String::new();
     }
     let mut kept = Vec::new();
-    let mut used = display_width("…");
-    for c in text.chars().rev() {
-        let char_width = display_width(c.encode_utf8(&mut [0; 4]));
-        if used + char_width > width {
+    let mut used = "…".width();
+    for grapheme in text.graphemes(true).rev() {
+        let grapheme_width = grapheme.width();
+        if used + grapheme_width > width {
             break;
         }
-        kept.push(c);
-        used += char_width;
+        kept.push(grapheme);
+        used += grapheme_width;
     }
-    std::iter::once('…').chain(kept.into_iter().rev()).collect()
+    std::iter::once("…").chain(kept.into_iter().rev()).collect()
+}
+
+/// The part of `input` that fits in `width` columns, and the column of the cursor in it. When
+/// the text does not fit, up to a third of the width, and at least the character at the
+/// cursor, shows the text after the cursor.
+fn input_window(input: &Input, width: usize) -> (String, usize) {
+    let (before, after) = (input.before_cursor(), input.after_cursor());
+    // The cursor after the last character needs a column too.
+    if input.as_str().width() < width {
+        return (input.as_str().to_owned(), before.width());
+    }
+    let next = after
+        .graphemes(true)
+        .next()
+        .map_or(1, UnicodeWidthStr::width);
+    let right = after.width().min(width / 3).max(next);
+    let left = tail(before, width.saturating_sub(right));
+    let cursor = left.width();
+    let right = cut(after, width.saturating_sub(cursor));
+    (left + &right, cursor)
 }
 
 /// An open box takes the keys. Its round corners show that also without colors.
@@ -1126,12 +1151,11 @@ fn draw_prompt(frame: &mut Frame, view: &PromptView, palette: Palette, area: Rec
         Constraint::Length(input_height),
         Constraint::Fill(1),
     ]));
-    if let Some((prefix, text)) = &view.input {
-        // There is no cursor movement, so the end of the text stays visible.
-        let room = usize::from(input_area.width).saturating_sub(display_width(prefix) + 1);
-        let input = Line::from(format!("{prefix}{}", tail(text, room)));
-        let column = u16::try_from(input.width()).unwrap_or(u16::MAX);
-        frame.render_widget(input, input_area);
+    if let Some((prefix, input)) = &view.input {
+        let room = usize::from(input_area.width).saturating_sub(prefix.width());
+        let (shown, cursor) = input_window(input, room);
+        frame.render_widget(Line::from(format!("{prefix}{shown}")), input_area);
+        let column = u16::try_from(prefix.width() + cursor).unwrap_or(u16::MAX);
         if input_area.width > 0 {
             frame.set_cursor_position((
                 input_area.x + column.min(input_area.width - 1),
@@ -1175,8 +1199,8 @@ enum HelpRow {
 impl HelpRow {
     fn width(&self, key_width: usize) -> usize {
         match self {
-            Self::Heading(name) => display_width(name) + 1,
-            Self::Key(_, action) => key_width + display_width(action) + 4,
+            Self::Heading(name) => name.width() + 1,
+            Self::Key(_, action) => key_width + action.width() + 4,
             Self::Blank => 0,
         }
     }
@@ -1249,7 +1273,7 @@ fn help_layout(area: Rect) -> Vec<Vec<HelpRow>> {
     let key_width = help_key_width();
     [
         vec![grouped(&HELP)],
-        vec![grouped(&HELP[..2]), grouped(&HELP[2..])],
+        vec![grouped(&[MAP, ROUTE, APP]), grouped(&[PLACES, TEXT])],
     ]
     .into_iter()
     .find(|columns| {
@@ -1624,6 +1648,12 @@ mod tests {
     }
 
     #[test]
+    fn help_fits_80x22_in_one_list_and_83_columns_in_two() {
+        let two_columns = help_layout(help_area(Rect::new(0, 0, 83, 24)));
+        assert_eq!((help_overflow(80, 22), two_columns.len()), (0, 2));
+    }
+
+    #[test]
     fn help_overflow_counts_the_hidden_rows() {
         // 19 rows of keys, and 11 visible rows: 13 above the status line, less the borders.
         assert_eq!(help_overflow(44, 14), 8);
@@ -1692,6 +1722,37 @@ mod tests {
         let text = screen(80, 24, &app);
         let input = text.lines().nth(2).unwrap();
         assert!(input.contains("› …x") && input.contains("END  │"));
+    }
+
+    #[test]
+    fn input_window_keeps_the_cursor_and_text_after_it_visible() {
+        let mut input = Input::from("piazza del duomo");
+        let left = KeyEvent::new(KeyCode::Left, KeyModifiers::NONE);
+        assert_eq!(
+            input_window(&input, 20),
+            ("piazza del duomo".to_owned(), 16)
+        );
+        assert_eq!(input_window(&input, 10), ("…el duomo".to_owned(), 9));
+        for _ in 0..6 {
+            input.edit(left);
+        }
+        assert_eq!(input_window(&input, 10), ("…za del d…".to_owned(), 7));
+        input.edit(KeyEvent::new(KeyCode::Home, KeyModifiers::NONE));
+        assert_eq!(input_window(&input, 10), ("piazza de…".to_owned(), 0));
+    }
+
+    #[test]
+    fn input_window_counts_wide_characters_as_ratatui() {
+        let hearts = Input::from("❤\u{fe0f}❤\u{fe0f}");
+        assert_eq!(input_window(&hearts, 10), (hearts.as_str().to_owned(), 4));
+        let family = "👨\u{200d}👩\u{200d}👧";
+        assert_eq!(
+            input_window(&Input::from(family), 10),
+            (family.to_owned(), 2)
+        );
+        let mut city = Input::from("東京都");
+        city.edit(KeyEvent::new(KeyCode::Left, KeyModifiers::NONE));
+        assert_eq!(input_window(&city, 5), ("…京都".to_owned(), 3));
     }
 
     #[test]

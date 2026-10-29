@@ -139,13 +139,22 @@ impl Trip {
     }
 
     pub fn next_alternative(&mut self) {
+        self.select_alternative(|selected, len| (selected + 1) % len);
+    }
+
+    pub fn previous_alternative(&mut self) {
+        self.select_alternative(|selected, len| (selected + len - 1) % len);
+    }
+
+    /// `pick` gets the selected route and the route count.
+    fn select_alternative(&mut self, pick: impl FnOnce(usize, usize) -> usize) {
         if let Routes::Ready {
             routes,
             selected,
             step,
         } = &mut self.routes
         {
-            *selected = (*selected + 1) % routes.len();
+            *selected = pick(*selected, routes.len());
             *step = None;
         }
     }
@@ -419,6 +428,17 @@ mod tests {
         trip.next_alternative();
         trip.next_alternative();
         assert_matches!(trip.routes(), Routes::Ready { selected: 0, .. });
+    }
+
+    #[test]
+    fn shift_tab_selects_the_previous_alternative_and_wraps() {
+        let mut trip = Trip::default();
+        trip.set(End::Start, point(45.0, 9.0));
+        trip.set(End::End, point(45.1, 9.1));
+        let id = route_request(&mut trip);
+        trip.receive_routes(id, Ok(vec![route(3), route(3), route(3)]));
+        trip.previous_alternative();
+        assert_matches!(trip.routes(), Routes::Ready { selected: 2, .. });
     }
 
     #[test]
