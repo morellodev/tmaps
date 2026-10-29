@@ -74,7 +74,6 @@ The config file can change each endpoint. Providers are concrete types for now. 
   - `Backspace` and `Delete` remove one character. `Ctrl-W` or `Alt-Backspace` removes the word before the cursor. `Ctrl-Delete`, `Alt-Delete`, or `Alt-D` removes the word after it.
   - `Ctrl-U` removes the text before the cursor, and `Ctrl-K` removes the text after it.
   - The help leaves out the alias keys, such as `Home` and `Ctrl-N`, so it fits in 80×22. A pair of keys with the same modifier shows as `Ctrl-A/E`.
-- Windows reports `AltGr` as `Ctrl`+`Alt`. A character with both modifiers is a typed character, so `@` and `[` work on layouts that need `AltGr`.
 - Mouse:
   - Only on the map, a drag pans and the wheel zooms. A drag that starts on the panel, the help box, or the status line does not pan.
   - On the panel, a click on a step and the wheel select a step, like `]`/`[`. A click on the empty rows under the steps does nothing.
