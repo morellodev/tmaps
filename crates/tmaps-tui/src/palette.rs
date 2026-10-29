@@ -28,7 +28,8 @@ pub enum Shade {
     Light,
 }
 
-/// A true color and its nearest color in the 256-color palette.
+/// A true color and a near color in the 256-color palette. The index is not always the nearest
+/// one, because it must also keep the contrast and the color-blind separation of the tests.
 type Spec = ([u8; 3], u8);
 
 impl Palette {
@@ -67,7 +68,7 @@ impl Palette {
     }
 
     pub fn crosshair(self) -> Color {
-        self.color(([255, 90, 140], 211), ([190, 20, 80], 125))
+        self.color(([255, 70, 45], 209), ([190, 20, 80], 88))
     }
 
     pub fn area(self, class: Class) -> Color {
@@ -81,23 +82,23 @@ impl Palette {
 
     pub fn line(self, class: Class) -> Color {
         match class {
-            Class::Boundary => self.color(([230, 150, 205], 177), ([170, 60, 150], 127)),
-            Class::Waterway => self.color(([70, 140, 235], 39), ([20, 110, 190], 25)),
-            Class::Rail => self.color(([140, 140, 145], 248), ([75, 75, 80], 239)),
-            Class::Path => self.color(([170, 140, 105], 144), ([130, 95, 60], 94)),
-            Class::MajorRoad => self.color(([235, 205, 95], 185), ([155, 108, 0], 130)),
-            Class::Highway => self.color(([250, 135, 55], 208), ([150, 45, 10], 124)),
+            Class::Boundary => self.color(([255, 150, 225], 177), ([175, 60, 160], 128)),
+            Class::Waterway => self.color(([80, 130, 215], 39), ([15, 110, 195], 25)),
+            Class::Rail => self.color(([140, 135, 145], 248), ([70, 55, 60], 237)),
+            Class::Path => self.color(([175, 140, 105], 180), ([85, 40, 0], 52)),
+            Class::MajorRoad => self.color(([235, 205, 95], 185), ([155, 110, 5], 130)),
+            Class::Highway => self.color(([250, 135, 55], 214), ([150, 45, 10], 124)),
             Class::Route => self.route(),
-            Class::Alternative => self.color(([125, 150, 185], 110), ([90, 100, 120], 60)),
+            Class::Alternative => self.color(([125, 150, 195], 110), ([90, 100, 115], 59)),
             Class::MinorRoad | Class::Green | Class::Water | Class::Building => {
-                self.color(([175, 175, 170], 250), ([115, 115, 110], 243))
+                self.color(([175, 175, 170], 250), ([125, 120, 125], 243))
             }
         }
     }
 
     /// The strong accent of the selected route, see [`Class::Route`].
     pub fn route(self) -> Color {
-        self.color(([60, 200, 255], 45), ([0, 60, 170], 19))
+        self.color(([80, 200, 255], 45), ([0, 60, 170], 19))
     }
 
     /// The start and end points: reversed, so that they show also without colors.
@@ -379,14 +380,13 @@ mod tests {
     /// WCAG 2.2 SC 1.4.11 asks 3:1 for graphical objects.
     #[test]
     fn map_lines_have_3_to_1_contrast_with_the_background_and_the_areas() {
-        let low = low_contrast(
-            |palette| {
-                let lines = LINES.map(|class| palette.line(class));
-                [palette.crosshair()].into_iter().chain(lines).collect()
-            },
-            3.0,
-        );
-        assert_eq!(low, []);
+        assert_eq!(low_contrast(marks, 3.0), []);
+    }
+
+    /// The crosshair and the lines, which show on top of the fills.
+    fn marks(palette: Palette) -> Vec<Color> {
+        let lines = LINES.map(|class| palette.line(class));
+        [palette.crosshair()].into_iter().chain(lines).collect()
     }
 
     /// WCAG 2.2 SC 1.4.3 asks 4.5:1 for text. A terminal has no large text.
@@ -426,7 +426,7 @@ mod tests {
 
     fn linear_rgb(color: Color) -> [f64; 3] {
         let Color::Rgb(r, g, b) = rgb(color) else {
-            unreachable!()
+            panic!("not an RGB color: {color:?}")
         };
         [r, g, b].map(linear)
     }
@@ -470,22 +470,24 @@ mod tests {
             .fold(f64::INFINITY, f64::min)
     }
 
+    /// About two times the Oklab difference that CSS Color 4 uses as just noticeable (0.02),
+    /// because braille dots are thin. The 256-color cube permits no larger value in the dark theme.
+    const MIN_DIFFERENCE: f64 = 0.045;
+
     #[test]
-    fn route_and_road_classes_stay_apart_with_color_blindness() {
-        let pairs = LINES
-            .into_iter()
-            .filter(|&class| class != Class::Route)
-            .map(|class| (Class::Route, class))
-            .chain([(Class::Highway, Class::MajorRoad)]);
-        let pairs: Vec<_> = pairs.collect();
-        let close: Vec<_> = palettes()
-            .flat_map(|palette| {
-                pairs.iter().filter_map(move |&(a, b)| {
-                    let difference = smallest_difference(palette.line(a), palette.line(b));
-                    (difference < 0.06).then_some((palette, a, b, difference))
-                })
-            })
-            .collect();
+    fn map_lines_stay_apart_with_color_blindness() {
+        let mut close = Vec::new();
+        for palette in palettes() {
+            let marks = marks(palette);
+            for (i, &a) in marks.iter().enumerate() {
+                for &b in &marks[i + 1..] {
+                    let difference = smallest_difference(a, b);
+                    if difference < MIN_DIFFERENCE {
+                        close.push((palette, a, b, difference));
+                    }
+                }
+            }
+        }
         assert_eq!(close, []);
     }
 
