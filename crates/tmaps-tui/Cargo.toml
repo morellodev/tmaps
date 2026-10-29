@@ -18,6 +18,8 @@ thiserror = "2"
 tmaps-core = { version = "0.1.0", path = "../tmaps-core" }
 tokio = { version = "1", features = ["macros", "rt", "sync", "time"] }
 toml = "1"
+unicode-segmentation = "1"
+unicode-width = "0.2"
 
 [lints]
 workspace = true

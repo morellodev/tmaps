@@ -17,7 +17,7 @@ use tmaps_core::routing::{Mode, Route};
 use tmaps_core::tiles::TileId;
 
 use crate::message::{Message, SourceInfo};
-use crate::prompt::{self, Prompt, Search};
+use crate::prompt::{self, Change, Input, Prompt, Search};
 use crate::regions::Regions;
 use crate::services::Request;
 use crate::trip::{End, Routes, Trip};
@@ -446,6 +446,7 @@ impl App {
             {
                 return false;
             }
+            KeyCode::Char('q') if self.help => self.help = false,
             KeyCode::Char('q') => self.quit = true,
             KeyCode::Char('?') => {
                 self.help = !self.help;
@@ -476,6 +477,7 @@ impl App {
             KeyCode::Char('2') => self.trip.set_mode(Mode::Bike),
             KeyCode::Char('3') => self.trip.set_mode(Mode::Foot),
             KeyCode::Tab => self.trip.next_alternative(),
+            KeyCode::BackTab => self.trip.previous_alternative(),
             KeyCode::Char('p') if !self.trip.is_empty() => self.panel = !self.panel,
             KeyCode::Char(']') => self.show_step(1),
             KeyCode::Char('[') => self.show_step(-1),
@@ -488,20 +490,18 @@ impl App {
     }
 
     fn on_prompt_key(&mut self, key: KeyEvent) -> bool {
-        if key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL) {
-            self.quit = true;
-            return true;
-        }
+        let cancel = key.code == KeyCode::Esc
+            || key.code == KeyCode::Char('c') && key.modifiers.contains(KeyModifiers::CONTROL);
         // A key that only cancels the question still changes the screen.
         match self.prompt.as_mut().and_then(Prompt::take_removal) {
             Some(name) if key.code == KeyCode::Enter => {
                 self.requests.push(Request::RemovePlace { name });
             }
-            Some(_) if key.code == KeyCode::Esc => {}
+            Some(_) if cancel => {}
             Some(_) => {
                 self.on_prompt_input(key);
             }
-            None if key.code == KeyCode::Esc => self.leave_prompt(),
+            None if cancel => self.leave_prompt(),
             None => return self.on_prompt_input(key),
         }
         true
@@ -531,13 +531,15 @@ impl App {
                         .map(|place| place_view(place, width, height));
                     self.close_with(view);
                 } else if let Some(selected) =
-                    prompt::select(search.selected, search.results.len(), key.code)
+                    prompt::select(search.selected, search.results.len(), key)
                 {
                     search.selected = selected;
-                } else if prompt::edit(&mut search.text, key) {
-                    self.request_search();
                 } else {
-                    return false;
+                    match search.text.edit(key) {
+                        Change::Text => self.request_search(),
+                        Change::Cursor => {}
+                        Change::Nothing => return false,
+                    }
                 }
             }
             Prompt::SavePlace {
@@ -547,7 +549,7 @@ impl App {
                 ..
             } => {
                 if key.code == KeyCode::Enter {
-                    match validate_name(name) {
+                    match validate_name(name.as_str()) {
                         Ok(valid) => {
                             let name = valid.to_owned();
                             let location = *location;
@@ -555,10 +557,12 @@ impl App {
                         }
                         Err(_) => *invalid = true,
                     }
-                } else if prompt::edit(name, key) {
-                    *invalid = false;
                 } else {
-                    return false;
+                    match name.edit(key) {
+                        Change::Text => *invalid = false,
+                        Change::Cursor => {}
+                        Change::Nothing => return false,
+                    }
                 }
             }
         }
@@ -588,7 +592,7 @@ impl App {
 
     fn open_saved_places(&mut self) {
         self.open(Prompt::Search(Search {
-            text: "@".to_owned(),
+            text: Input::from("@"),
             ..Search::default()
         }));
         self.request_search();
@@ -628,7 +632,7 @@ impl App {
         let saved = search
             .saved_query()
             .map(|query| saved_places(&self.places, query));
-        if search.text.trim().is_empty() || saved.is_some() {
+        if search.text.as_str().trim().is_empty() || saved.is_some() {
             if pending {
                 self.requests.push(Request::CancelSearch);
             }
@@ -639,7 +643,7 @@ impl App {
         search.pending = Some(self.last_search);
         self.requests.push(Request::Search {
             id: self.last_search,
-            text: search.text.clone(),
+            text: search.text.as_str().to_owned(),
             near: self.view.center(),
         });
     }
@@ -647,7 +651,7 @@ impl App {
     fn open_save_place(&mut self, location: LatLon, label: Option<String>, search: Option<Search>) {
         self.close_prompt();
         self.open(Prompt::SavePlace {
-            name: String::new(),
+            name: Input::default(),
             invalid: false,
             location: rounded(location),
             label,
@@ -1386,7 +1390,7 @@ mod tests {
         key(&mut app, KeyCode::Char('\''));
         app.take_requests();
         app.handle(&press(KeyCode::Char('s'), KeyModifiers::CONTROL));
-        assert_matches!(app.prompt(), Some(Prompt::Search(search)) if search.text == "@");
+        assert_matches!(app.prompt(), Some(Prompt::Search(search)) if search.text.as_str() == "@");
         assert_eq!(app.take_requests(), []);
     }
 
@@ -1395,7 +1399,7 @@ mod tests {
         let mut app = ready_app();
         key(&mut app, KeyCode::Char('/'));
         app.handle(&press(KeyCode::Char('s'), KeyModifiers::CONTROL));
-        assert_matches!(app.prompt(), Some(Prompt::Search(search)) if search.text.is_empty());
+        assert_matches!(app.prompt(), Some(Prompt::Search(search)) if search.text.as_str().is_empty());
     }
 
     #[test]
@@ -1431,7 +1435,7 @@ mod tests {
         key(&mut app, KeyCode::Esc);
         assert_matches!(
             app.prompt(),
-            Some(Prompt::Search(search)) if search.text == "Roma" && search.selected == 1
+            Some(Prompt::Search(search)) if search.text.as_str() == "Roma" && search.selected == 1
         );
         assert_eq!(result_labels(&app), ["Roma, Lazio", "Roma, Texas"]);
     }
@@ -1884,11 +1888,70 @@ mod tests {
     }
 
     #[test]
-    fn ctrl_c_quits_from_a_prompt() {
+    fn ctrl_c_closes_a_prompt_like_esc() {
         let mut app = ready_app();
         key(&mut app, KeyCode::Char('/'));
         app.handle(&press(KeyCode::Char('c'), KeyModifiers::CONTROL));
+        assert!(app.prompt().is_none() && !app.should_quit());
+    }
+
+    #[test]
+    fn ctrl_c_quits_from_the_map() {
+        let mut app = ready_app();
+        app.handle(&press(KeyCode::Char('c'), KeyModifiers::CONTROL));
         assert!(app.should_quit());
+    }
+
+    #[test]
+    fn ctrl_c_keeps_a_saved_place_like_esc() {
+        let mut app = app_with_places(&["home"]);
+        key(&mut app, KeyCode::Char('\''));
+        ctrl_d(&mut app);
+        app.handle(&press(KeyCode::Char('c'), KeyModifiers::CONTROL));
+        assert_eq!(
+            (removing(&app), app.take_requests(), app.should_quit()),
+            (None, Vec::new(), false)
+        );
+    }
+
+    #[test]
+    fn q_closes_the_help_and_does_not_quit() {
+        let mut app = ready_app();
+        key(&mut app, KeyCode::Char('?'));
+        key(&mut app, KeyCode::Char('q'));
+        assert!(!app.help() && !app.should_quit());
+    }
+
+    #[test]
+    fn cursor_move_redraws_but_does_not_search() {
+        let mut app = ready_app();
+        key(&mut app, KeyCode::Char('/'));
+        type_text(&mut app, "Duomo");
+        let searches = last_search(&mut app);
+        assert!(app.handle(&press(KeyCode::Left, KeyModifiers::NONE)));
+        key(&mut app, KeyCode::Char('x'));
+        assert_matches!(app.prompt(), Some(Prompt::Search(search)) if search.text.as_str() == "Duomxo");
+        assert_eq!(last_search(&mut app), searches + 1);
+    }
+
+    #[test]
+    fn ctrl_n_selects_the_next_result() {
+        let mut app = app_with_results();
+        app.handle(&press(KeyCode::Char('n'), KeyModifiers::CONTROL));
+        assert_matches!(app.prompt(), Some(Prompt::Search(search)) if search.selected == 1);
+    }
+
+    #[test]
+    fn shift_tab_selects_the_previous_route() {
+        let mut app = ready_app();
+        let id = route_id(&plan_route(&mut app));
+        let route = sample_route(&[milan()]);
+        app.receive(
+            Message::Routes(id, Ok(vec![route.clone(), route.clone(), route])),
+            Instant::now(),
+        );
+        app.handle(&press(KeyCode::BackTab, KeyModifiers::SHIFT));
+        assert_matches!(app.trip().routes(), Routes::Ready { selected: 2, .. });
     }
 
     #[test]
