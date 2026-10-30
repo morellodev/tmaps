@@ -1,0 +1,30 @@
+[workspace]
+git_only = true
+# All crates share the workspace version, so tmaps-core and tmaps-tui find their last release in the tag of tmaps.
+# Without a tag, release-plz adds their full history to the changelog of tmaps.
+git_tag_name = "v{{ version }}"
+git_tag_enable = false
+git_release_enable = false
+changelog_update = false
+# Only changes to the shipped binary open a release PR.
+release_commits = "^(feat|fix|refactor|perf)[(:!]"
+release_always = false
+
+[[package]]
+name = "tmaps"
+changelog_update = true
+changelog_path = "./CHANGELOG.md"
+changelog_include = ["tmaps-core", "tmaps-tui"]
+git_tag_enable = true
+git_release_enable = true
+
+[changelog]
+commit_parsers = [
+    { message = "^(ci|test)[(:!]", skip = true },
+    { message = "^feat", group = "added" },
+    { message = "^changed", group = "changed" },
+    { message = "^deprecated", group = "deprecated" },
+    { message = "^fix", group = "fixed" },
+    { message = "^security", group = "security" },
+    { message = "^.*", group = "other" },
+]

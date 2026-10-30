@@ -19,7 +19,13 @@ Routes use free-flow speeds, without live traffic. tmaps does not plan public tr
 
 tmaps works on Linux and macOS. Windows is not supported.
 
-Install from source. You need Rust 1.96 or later.
+Install with [Homebrew](https://brew.sh):
+
+```sh
+brew install morellodev/tap/tmaps
+```
+
+To install from source, you need Rust 1.96 or later.
 
 ```sh
 cargo install --locked --git https://github.com/morellodev/tmaps tmaps
