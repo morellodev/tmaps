@@ -1,8 +1,17 @@
 # tmaps
 
+[![CI](https://github.com/morellodev/tmaps/actions/workflows/ci.yml/badge.svg)](https://github.com/morellodev/tmaps/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
+OpenStreetMap in your terminal, drawn with braille characters.
+
+![A route from Duomo to Centrale FS in Milan, with car, bike, and foot options and turn-by-turn steps](docs/screenshots/route.png)
+
 `tmaps` shows OpenStreetMap maps in the terminal and plans routes by car, bike, or foot. It also has a CLI that gives JSON for scripts and AI agents.
 
 The map uses braille characters, so it works in each terminal that shows Unicode. It does not need a graphics protocol.
+
+![Search results for "duomo" on a map of Milan](docs/screenshots/search.png)
 
 Routes use free-flow speeds, without live traffic. tmaps does not plan public transit routes or give live GPS guidance.
 
