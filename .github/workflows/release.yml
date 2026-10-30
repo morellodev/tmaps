@@ -1,8 +1,8 @@
 name: Release
 
 on:
-  push:
-    tags: ["v*"]
+  release:
+    types: [published]
 
 permissions:
   contents: read
@@ -42,8 +42,8 @@ jobs:
           name: tmaps-${{ matrix.target }}
           path: tmaps-${{ matrix.target }}.tar.gz
 
-  release:
-    name: GitHub Release
+  upload:
+    name: Upload assets
     needs: build
     runs-on: ubuntu-latest
     permissions:
@@ -53,18 +53,22 @@ jobs:
         with:
           merge-multiple: true
       # A rebuild gives new checksums, so a re-run must not replace assets that the formula already uses.
-      - name: Create the release
+      - name: Upload the missing assets
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
-          if ! gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
-            gh release create "$GITHUB_REF_NAME" tmaps-*.tar.gz --verify-tag --generate-notes
-          fi
+          set -euo pipefail
+          existing=$(gh release view "$GITHUB_REF_NAME" --json assets --jq '.assets[].name')
+          for asset in tmaps-*.tar.gz; do
+            if ! grep -qxF "$asset" <<< "$existing"; then
+              gh release upload "$GITHUB_REF_NAME" "$asset"
+            fi
+          done
 
   homebrew:
     name: Update Homebrew tap
-    needs: release
+    needs: upload
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
