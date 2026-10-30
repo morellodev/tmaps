@@ -28,7 +28,7 @@ pub enum Shade {
     Light,
 }
 
-/// A true color and its nearest color in the 256-color palette.
+/// A true color and a near 256-color index, which must also pass the contrast tests.
 type Spec = ([u8; 3], u8);
 
 impl Palette {
@@ -67,37 +67,37 @@ impl Palette {
     }
 
     pub fn crosshair(self) -> Color {
-        self.color(([255, 80, 80], 203), ([210, 30, 30], 160))
+        self.color(([255, 70, 45], 209), ([190, 20, 80], 88))
     }
 
     pub fn area(self, class: Class) -> Color {
         match class {
-            Class::Green => self.color(([28, 48, 32], 22), ([205, 230, 190], 194)),
-            Class::Water => self.color(([22, 40, 64], 17), ([170, 205, 225], 152)),
-            Class::Building => self.color(([46, 46, 52], 237), ([222, 214, 206], 188)),
+            Class::Green => self.color(([30, 50, 26], 22), ([205, 230, 172], 187)),
+            Class::Water => self.color(([20, 36, 66], 17), ([192, 220, 245], 153)),
+            Class::Building => self.color(([40, 42, 56], 236), ([220, 214, 208], 188)),
             _ => self.background(),
         }
     }
 
     pub fn line(self, class: Class) -> Color {
         match class {
-            Class::Boundary => self.color(([150, 110, 160], 96), ([140, 90, 150], 96)),
-            Class::Waterway => self.color(([70, 120, 190], 68), ([70, 130, 200], 68)),
-            Class::Rail => self.color(([120, 120, 120], 244), ([110, 110, 110], 242)),
-            Class::Path => self.color(([115, 115, 105], 243), ([130, 120, 105], 101)),
-            Class::MajorRoad => self.color(([220, 190, 110], 179), ([185, 110, 20], 130)),
-            Class::Highway => self.color(([240, 140, 70], 208), ([200, 70, 35], 166)),
+            Class::Boundary => self.color(([255, 150, 225], 177), ([175, 60, 160], 128)),
+            Class::Waterway => self.color(([80, 130, 215], 39), ([15, 110, 195], 25)),
+            Class::Rail => self.color(([140, 135, 145], 248), ([70, 55, 60], 237)),
+            Class::Path => self.color(([175, 140, 105], 180), ([85, 40, 0], 52)),
+            Class::MajorRoad => self.color(([235, 205, 95], 185), ([155, 110, 5], 130)),
+            Class::Highway => self.color(([250, 135, 55], 214), ([150, 45, 10], 124)),
             Class::Route => self.route(),
-            Class::Alternative => self.color(([80, 110, 140], 66), ([105, 135, 175], 67)),
+            Class::Alternative => self.color(([125, 150, 195], 110), ([90, 100, 115], 59)),
             Class::MinorRoad | Class::Green | Class::Water | Class::Building => {
-                self.color(([150, 150, 150], 248), ([120, 120, 120], 243))
+                self.color(([175, 175, 170], 250), ([125, 120, 125], 243))
             }
         }
     }
 
     /// The strong accent of the selected route, see [`Class::Route`].
     pub fn route(self) -> Color {
-        self.color(([60, 190, 255], 39), ([0, 80, 190], 25))
+        self.color(([80, 200, 255], 45), ([50, 60, 230], 21))
     }
 
     /// The start and end points: reversed, so that they show also without colors.
@@ -129,7 +129,7 @@ impl Palette {
     pub fn label(self, class: LabelClass) -> Style {
         let (color, modifier) = match class {
             LabelClass::Country => (
-                self.color(([235, 235, 235], 255), ([30, 30, 30], 235)),
+                self.color(([235, 235, 235], 255), ([30, 30, 30], 234)),
                 Modifier::BOLD,
             ),
             LabelClass::City => (
@@ -137,23 +137,23 @@ impl Palette {
                 Modifier::BOLD,
             ),
             LabelClass::State => (
-                self.color(([170, 170, 180], 249), ([100, 100, 110], 242)),
+                self.color(([190, 190, 200], 251), ([80, 80, 90], 239)),
                 Modifier::empty(),
             ),
             LabelClass::Town => (
-                self.color(([220, 220, 220], 253), ([40, 40, 40], 236)),
+                self.color(([220, 220, 220], 253), ([40, 40, 40], 235)),
                 Modifier::empty(),
             ),
             LabelClass::Village | LabelClass::Suburb => (
-                self.color(([185, 185, 185], 250), ([80, 80, 80], 239)),
+                self.color(([200, 200, 200], 251), ([65, 65, 65], 238)),
                 Modifier::empty(),
             ),
             LabelClass::Water => (
-                self.color(([120, 170, 230], 111), ([40, 90, 170], 25)),
+                self.color(([135, 185, 245], 117), ([25, 75, 150], 24)),
                 Modifier::ITALIC,
             ),
             LabelClass::Road => (
-                self.color(([210, 210, 200], 252), ([60, 60, 60], 238)),
+                self.color(([210, 210, 200], 252), ([60, 60, 60], 237)),
                 Modifier::empty(),
             ),
         };
@@ -286,18 +286,22 @@ mod tests {
 
     /// The WCAG relative luminance of an sRGB color.
     fn luminance(color: Color) -> f64 {
-        let Color::Rgb(r, g, b) = color else {
+        let [r, g, b] = linear_rgb(color);
+        0.2126 * r + 0.7152 * g + 0.0722 * b
+    }
+
+    fn linear_rgb(color: Color) -> [f64; 3] {
+        let Color::Rgb(r, g, b) = rgb(color) else {
             panic!("not an RGB color: {color:?}")
         };
-        let linear = |channel: u8| {
+        [r, g, b].map(|channel| {
             let c = f64::from(channel) / 255.0;
             if c <= 0.040_45 {
                 c / 12.92
             } else {
                 ((c + 0.055) / 1.055).powf(2.4)
             }
-        };
-        0.2126 * linear(r) + 0.7152 * linear(g) + 0.0722 * linear(b)
+        })
     }
 
     /// The xterm values of the 256-color palette, from index 16.
@@ -320,33 +324,151 @@ mod tests {
     }
 
     fn contrast(a: Color, b: Color) -> f64 {
-        let (a, b) = (rgb(a), rgb(b));
         let (a, b) = (luminance(a), luminance(b));
         (a.max(b) + 0.05) / (a.min(b) + 0.05)
     }
 
+    fn marks(palette: Palette) -> Vec<Color> {
+        let lines = Class::ALL.into_iter().filter(|class| !class.is_area());
+        let lines = lines.map(|class| palette.line(class));
+        [palette.crosshair()].into_iter().chain(lines).collect()
+    }
+
+    fn labels(palette: Palette) -> Vec<Color> {
+        [
+            LabelClass::Country,
+            LabelClass::State,
+            LabelClass::City,
+            LabelClass::Town,
+            LabelClass::Village,
+            LabelClass::Suburb,
+            LabelClass::Water,
+            LabelClass::Road,
+        ]
+        .into_iter()
+        .filter_map(|class| palette.label(class).fg)
+        .collect()
+    }
+
+    fn fills(palette: Palette) -> [Color; 4] {
+        [
+            palette.background(),
+            palette.area(Class::Green),
+            palette.area(Class::Water),
+            palette.area(Class::Building),
+        ]
+    }
+
+    /// WCAG 2.2 SC 1.4.11 asks 3:1 for graphical objects.
     #[test]
-    fn map_lines_have_3_to_1_contrast_with_the_background() {
-        let classes = [
-            Class::Boundary,
-            Class::Waterway,
-            Class::Rail,
-            Class::Path,
-            Class::MinorRoad,
-            Class::MajorRoad,
-            Class::Highway,
-            Class::Route,
-            Class::Alternative,
-        ];
-        let low: Vec<_> = palettes()
-            .flat_map(|palette| {
-                classes.into_iter().filter_map(move |class| {
-                    let ratio = contrast(palette.line(class), palette.background());
-                    (ratio < 3.0).then_some((palette, class, ratio))
-                })
-            })
-            .collect();
+    fn map_lines_have_3_to_1_contrast_with_the_background_and_the_areas() {
+        let mut low = Vec::new();
+        for palette in palettes() {
+            for color in marks(palette) {
+                for fill in fills(palette) {
+                    let ratio = contrast(color, fill);
+                    if ratio < 3.0 {
+                        low.push((palette, color, fill, ratio));
+                    }
+                }
+            }
+        }
         assert_eq!(low, []);
+    }
+
+    /// WCAG 2.2 SC 1.4.3 asks 4.5:1 for text. A terminal has no large text.
+    #[test]
+    fn labels_have_4_5_to_1_contrast_with_the_background_and_the_areas() {
+        let mut low = Vec::new();
+        for palette in palettes() {
+            for color in labels(palette) {
+                for fill in fills(palette) {
+                    let ratio = contrast(color, fill);
+                    if ratio < 4.5 {
+                        low.push((palette, color, fill, ratio));
+                    }
+                }
+            }
+        }
+        assert_eq!(low, []);
+    }
+
+    /// Normal vision, then protanopia, deuteranopia and tritanopia in the model of Machado,
+    /// Oliveira and Fernandes (2009) at severity 1, for linear sRGB:
+    /// <https://www.inf.ufrgs.br/~oliveira/pubs_files/CVD_Simulation/CVD_Simulation.html>.
+    const VISIONS: [[[f64; 3]; 3]; 4] = [
+        [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],
+        [
+            [0.152_286, 1.052_583, -0.204_868],
+            [0.114_503, 0.786_281, 0.099_216],
+            [-0.003_882, -0.048_116, 1.051_998],
+        ],
+        [
+            [0.367_322, 0.860_646, -0.227_968],
+            [0.280_085, 0.672_501, 0.047_413],
+            [-0.011_820, 0.042_940, 0.968_881],
+        ],
+        [
+            [1.255_528, -0.076_749, -0.178_779],
+            [-0.078_411, 0.930_809, 0.147_602],
+            [0.004_733, 0.691_367, 0.303_900],
+        ],
+    ];
+
+    fn multiply(matrix: &[[f64; 3]; 3], vector: [f64; 3]) -> [f64; 3] {
+        matrix.map(|row| row.iter().zip(vector).map(|(m, v)| m * v).sum())
+    }
+
+    /// Oklab, see <https://bottosson.github.io/posts/oklab/>.
+    fn oklab(linear_rgb: [f64; 3]) -> [f64; 3] {
+        const TO_LMS: [[f64; 3]; 3] = [
+            [0.412_221_470_8, 0.536_332_536_3, 0.051_445_992_9],
+            [0.211_903_498_2, 0.680_699_545_1, 0.107_396_956_6],
+            [0.088_302_461_9, 0.281_718_837_6, 0.629_978_700_5],
+        ];
+        const TO_LAB: [[f64; 3]; 3] = [
+            [0.210_454_255_3, 0.793_617_785_0, -0.004_072_046_8],
+            [1.977_998_495_1, -2.428_592_205_0, 0.450_593_709_9],
+            [0.025_904_037_1, 0.782_771_766_2, -0.808_675_766_0],
+        ];
+        let lms = multiply(&TO_LMS, linear_rgb.map(|c| c.clamp(0.0, 1.0)));
+        multiply(&TO_LAB, lms.map(f64::cbrt))
+    }
+
+    fn smallest_difference(a: Color, b: Color) -> f64 {
+        let (a, b) = (linear_rgb(a), linear_rgb(b));
+        VISIONS
+            .iter()
+            .map(|vision| {
+                let (a, b) = (oklab(multiply(vision, a)), oklab(multiply(vision, b)));
+                a.iter()
+                    .zip(b)
+                    .map(|(a, b)| (a - b).powi(2))
+                    .sum::<f64>()
+                    .sqrt()
+            })
+            .fold(f64::INFINITY, f64::min)
+    }
+
+    /// About two times the Oklab difference that CSS Color 4 uses as just noticeable (0.02),
+    /// because braille dots are thin. The 256-color cube permits no larger value in the dark theme.
+    const MIN_DIFFERENCE: f64 = 0.045;
+
+    #[test]
+    fn map_lines_stay_apart_with_color_blindness() {
+        let mut close = Vec::new();
+        for palette in palettes() {
+            let marks = marks(palette);
+            for (i, &a) in marks.iter().enumerate() {
+                for &b in &marks[i + 1..] {
+                    let difference = smallest_difference(a, b);
+                    if difference < MIN_DIFFERENCE {
+                        close.push((palette, a, b, difference));
+                    }
+                }
+            }
+        }
+        assert_eq!(close, []);
     }
 
     #[test]
