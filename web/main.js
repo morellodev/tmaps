@@ -28,8 +28,9 @@ dark.addEventListener("change", (event) => {
 
 let frame = 0;
 function redraw() {
-  frame ||= requestAnimationFrame(() => {
+  frame ||= requestAnimationFrame((start) => {
     frame = 0;
+    addArrivedTiles(start);
     fetchMissingTiles();
     map.draw();
     describeView();
@@ -43,15 +44,32 @@ function fetchMissingTiles() {
   }
 }
 
+const arrived = [];
 async function fetchTile(z, x, y) {
   try {
     const response = await fetch(map.tile_url(z, x, y));
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    map.add_tile(z, x, y, new Uint8Array(await response.arrayBuffer()));
+    arrived.push({ z, x, y, bytes: new Uint8Array(await response.arrayBuffer()) });
     redraw();
   } catch (error) {
     console.warn(`Tile ${z}/${x}/${y} failed`, error);
   }
+}
+
+// A tile takes several milliseconds to prepare, so a frame prepares only what fits in its budget
+// and leaves the rest to the next frames.
+const TILE_BUDGET_MS = 4;
+function addArrivedTiles(start) {
+  do {
+    const tile = arrived.shift();
+    if (!tile) return;
+    try {
+      map.add_tile(tile.z, tile.x, tile.y, tile.bytes);
+    } catch (error) {
+      console.warn(`Tile ${tile.z}/${tile.x}/${tile.y} failed`, error);
+    }
+  } while (performance.now() - start < TILE_BUDGET_MS);
+  if (arrived.length) redraw();
 }
 
 // The status is a live region, so it changes only when the view stops moving.
