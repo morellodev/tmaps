@@ -113,11 +113,18 @@ impl WebMap {
         })
     }
 
+    /// Removes the tiles of the last tile set. Stop their fetches, so that they do not come to
+    /// [`WebMap::add_tile`].
+    ///
     /// # Errors
     ///
     /// If `tilejson` is not a `TileJSON` document with a tile URL.
     pub fn set_tile_set(&mut self, tilejson: &str) -> Result<(), JsValue> {
         self.tile_set = Some(TileSet::from_json(tilejson.as_bytes()).map_err(js)?);
+        self.tiles = TileCache::default();
+        self.fades = Fades::default();
+        self.placement = None;
+        self.tiles_added = false;
         for bitmap in self.rasters.clear() {
             bitmap.close();
         }
