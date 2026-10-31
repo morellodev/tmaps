@@ -1,5 +1,5 @@
 ---
-source: crates/tmaps-core/tests/render.rs
+source: crates/tmaps-braille/tests/render.rs
 expression: "snapshot(MILAN_Z14, 16.0, \"it-IT\")"
 ---
   ⠈⢾⣣             ⠈⠢⡑⢄⡜⢣⠔⠁                                                   ⣀⢔⡩⣊⠕⠉                 

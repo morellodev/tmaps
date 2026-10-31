@@ -3,7 +3,8 @@ use std::ffi::OsString;
 
 use ratatui::style::{Color, Modifier, Style};
 use terminal_colorsaurus::{QueryOptions, ThemeMode};
-use tmaps_core::render::{Class, LabelClass};
+use tmaps_core::label::LabelClass;
+use tmaps_core::style::Class;
 
 use crate::config::Theme;
 

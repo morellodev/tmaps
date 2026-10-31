@@ -3358,6 +3358,7 @@ dependencies = [
  "terminal-colorsaurus",
  "textwrap",
  "thiserror 2.0.21",
+ "tmaps-braille",
  "tmaps-core",
  "tokio",
  "toml",
@@ -3368,19 +3369,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "tmaps-braille"
+version = "0.1.0"
+dependencies = [
+ "insta",
+ "tmaps-core",
+ "unicode-segmentation",
+ "unicode-width",
+]
+
+[[package]]
 name = "tmaps-core"
 version = "0.1.0"
 dependencies = [
  "geo-types",
- "insta",
  "polyline",
  "prost",
  "schemars",
  "serde",
  "serde_json",
  "thiserror 2.0.21",
- "unicode-segmentation",
- "unicode-width",
 ]
 
 [[package]]

@@ -7,11 +7,10 @@ use crossterm::event::{
 };
 use lru::LruCache;
 use ratatui::layout::{Position, Rect};
+use tmaps_braille::{BrailleTile, DOTS_PER_CELL_X, DOTS_PER_CELL_Y, Grid, RouteLine, render};
 use tmaps_core::LatLon;
-use tmaps_core::render::{
-    Canvas, DOTS_PER_CELL_X, DOTS_PER_CELL_Y, PreparedTile, RouteLine, View, render,
-};
 use tmaps_core::tiles::TileId;
+use tmaps_core::view::View;
 
 use crate::geocode::{Place, PlaceKind};
 use crate::places::validate_name;
@@ -39,7 +38,7 @@ pub struct App {
     view: View,
     map_size: (u16, u16),
     source: SourceState,
-    tiles: LruCache<TileId, PreparedTile>,
+    tiles: LruCache<TileId, BrailleTile>,
     pending: HashSet<TileId>,
     failed: HashMap<TileId, Failure>,
     source_error: Option<String>,
@@ -402,10 +401,11 @@ impl App {
             .min()
     }
 
-    pub fn canvas(&self) -> Canvas {
+    /// The map, with the cell of the cursor free of labels.
+    pub fn grid(&self) -> Grid {
         let (width, height) = self.map_size;
         let Some(max_zoom) = self.max_zoom() else {
-            return Canvas::new(width, height);
+            return Grid::new(width, height);
         };
         let routes = match self.trip.routes() {
             Routes::Ready {
@@ -413,9 +413,16 @@ impl App {
             } => route_lines(routes, *selected),
             _ => Vec::new(),
         };
-        render(self.view, width, height, max_zoom, &routes, |id| {
-            self.tiles.peek(&id)
-        })
+        let cursor = cursor_cell(width, height);
+        render(
+            self.view,
+            width,
+            height,
+            max_zoom,
+            &routes,
+            &[cursor],
+            |id| self.tiles.peek(&id),
+        )
     }
 
     fn max_zoom(&self) -> Option<u8> {
@@ -835,6 +842,12 @@ fn kind_zoom(kind: Option<PlaceKind>) -> f64 {
 fn rounded(location: LatLon) -> LatLon {
     let round = |degrees: f64| (degrees * 1e6).round() / 1e6;
     LatLon::new(round(location.lat()), round(location.lon())).unwrap_or(location)
+}
+
+/// The cell of the cursor at the center of a map of `width` × `height` cells.
+#[must_use]
+pub fn cursor_cell(width: u16, height: u16) -> (u16, u16) {
+    (width / 2, height / 2)
 }
 
 fn route_lines(routes: &[Route], selected: usize) -> Vec<RouteLine<'_>> {
@@ -1952,6 +1965,64 @@ mod tests {
         );
         app.handle(&press(KeyCode::BackTab, KeyModifiers::SHIFT));
         assert_matches!(app.trip().routes(), Routes::Ready { selected: 2, .. });
+    }
+
+    #[test]
+    fn map_keeps_the_cursor_cell_free_of_labels() {
+        const EXTENT: u32 = 4096;
+        let mut app = ready_app();
+        let (columns, rows) = app.map_size;
+        let (column, row) = cursor_cell(columns, rows);
+        let (width, height) = (
+            f64::from(columns) * f64::from(DOTS_PER_CELL_X),
+            f64::from(rows) * f64::from(DOTS_PER_CELL_Y),
+        );
+        let (x, y) = (
+            (f64::from(column) + 0.5) * f64::from(DOTS_PER_CELL_X),
+            (f64::from(row) + 0.5) * f64::from(DOTS_PER_CELL_Y),
+        );
+        let center = app
+            .view
+            .visible_tiles(width, height, 14)
+            .into_iter()
+            .find(|tile| {
+                (tile.left..tile.left + tile.size).contains(&x)
+                    && (tile.top..tile.top + tile.size).contains(&y)
+            })
+            .unwrap();
+        #[expect(clippy::cast_possible_truncation, reason = "inside the tile extent")]
+        let at = |screen: f64, tile_start: f64| {
+            ((screen - tile_start) / center.size * f64::from(EXTENT)) as i32
+        };
+        let point = tmaps_core::mvt::Point {
+            x: at(x, center.left),
+            y: at(y, center.top),
+        };
+        let layer = tmaps_core::mvt::Layer::with_features(
+            "place",
+            EXTENT,
+            vec![(
+                tmaps_core::mvt::Geometry::Points(vec![point]),
+                vec![
+                    ("class", tmaps_core::mvt::Value::String("city".to_owned())),
+                    ("name", tmaps_core::mvt::Value::String("Milano".to_owned())),
+                ],
+            )],
+        );
+        let tile = tmaps_core::PreparedTile::new(
+            &tmaps_core::mvt::Tile {
+                layers: vec![layer],
+            },
+            "it",
+        );
+        app.receive(
+            Message::Tile(center.id, Ok(Box::new(BrailleTile::prepare(tile)))),
+            Instant::now(),
+        );
+        let grid = app.grid();
+        let label = grid.labels().first().unwrap();
+        let covers_cursor = label.row == row && (label.column..label.column + 6).contains(&column);
+        assert_eq!((label.text.as_str(), covers_cursor), ("Milano", false));
     }
 
     #[test]
