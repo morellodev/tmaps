@@ -2,10 +2,11 @@ use std::borrow::Cow;
 
 use serde::Deserialize;
 use serde::de::DeserializeOwned;
+use tmaps_core::LatLon;
 
 use crate::geocode::{Extent, Place, PlaceKind, SearchOptions};
 use crate::http::body_snippet;
-use crate::{Error, LatLon, Result};
+use crate::{Error, Result};
 
 /// Photon accepts only these values for `lang`; any other value is an HTTP 400.
 const SUPPORTED_LANGS: [&str; 3] = ["de", "en", "fr"];

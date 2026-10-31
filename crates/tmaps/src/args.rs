@@ -2,9 +2,9 @@ use std::path::PathBuf;
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use jiff::Zoned;
-use tmaps_core::config::{Units, normalize_locale};
-use tmaps_core::routing::Mode;
 
+use crate::config::{Units, normalize_locale};
+use crate::routing::Mode;
 use crate::time;
 
 /// Terminal maps with a route planner. Without a subcommand, tmaps shows the map. The

@@ -1,8 +1,10 @@
-use tmaps_core::geocode::Place;
+use tmaps_core::LatLon;
 use tmaps_core::render::PreparedTile;
-use tmaps_core::routing::{Mode, Route};
 use tmaps_core::tiles::TileId;
-use tmaps_core::{Error, LatLon};
+
+use crate::Error;
+use crate::geocode::Place;
+use crate::routing::{Mode, Route};
 
 /// A result of background work. The number in a result is the number of its request.
 #[derive(Debug)]

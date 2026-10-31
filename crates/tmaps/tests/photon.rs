@@ -1,8 +1,9 @@
 use std::assert_matches;
 
-use tmaps_core::geocode::SearchOptions;
-use tmaps_core::providers::photon::Photon;
-use tmaps_core::{Error, LatLon, http};
+use tmaps::geocode::SearchOptions;
+use tmaps::providers::photon::Photon;
+use tmaps::{Error, http};
+use tmaps_core::LatLon;
 use wiremock::matchers::{any, header, method, path, query_param, query_param_is_missing};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 

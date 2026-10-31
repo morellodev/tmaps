@@ -3,8 +3,9 @@ use std::str::FromStr;
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use tmaps_core::LatLon;
 
-use crate::{Error, LatLon, Result};
+use crate::{Error, Result};
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "lowercase")]

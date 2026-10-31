@@ -11,15 +11,15 @@ use ratatui::widgets::{
     Scrollbar, ScrollbarOrientation, ScrollbarState, Widget,
 };
 use tmaps_core::LatLon;
-use tmaps_core::config::Units;
-use tmaps_core::format::{distance, duration};
-use tmaps_core::geocode::Place;
-use tmaps_core::places::validate_name;
 use tmaps_core::render::{Canvas, Class, DOTS_PER_CELL_X, DOTS_PER_CELL_Y, View, cursor_cell};
-use tmaps_core::routing::{Maneuver, Mode, Route, Step};
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
 
+use crate::config::Units;
+use crate::format::{distance, duration};
+use crate::geocode::Place;
+use crate::places::validate_name;
+use crate::routing::{Maneuver, Mode, Route, Step};
 use crate::tui::app::{App, Level};
 use crate::tui::palette::Palette;
 use crate::tui::prompt::{Input, Prompt};
@@ -1355,7 +1355,7 @@ mod tests {
     use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
     use ratatui::layout::Position;
 
-    use tmaps_core::geocode::Place;
+    use crate::geocode::Place;
 
     use crate::tui::message::{Message, SourceInfo};
     use crate::tui::palette::{Depth, Shade};

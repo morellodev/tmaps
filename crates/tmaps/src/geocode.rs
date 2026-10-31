@@ -1,7 +1,6 @@
 use schemars::JsonSchema;
 use serde::Serialize;
-
-use crate::LatLon;
+use tmaps_core::LatLon;
 
 #[derive(Debug, Clone, PartialEq, Serialize, JsonSchema)]
 pub struct Place {

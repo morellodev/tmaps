@@ -3,8 +3,9 @@ use std::ffi::OsString;
 
 use ratatui::style::{Color, Modifier, Style};
 use terminal_colorsaurus::{QueryOptions, ThemeMode};
-use tmaps_core::config::Theme;
 use tmaps_core::render::{Class, LabelClass};
+
+use crate::config::Theme;
 
 /// The colors of the map for one theme and color depth.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

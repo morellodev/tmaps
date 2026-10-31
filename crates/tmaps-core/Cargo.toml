@@ -1,6 +1,6 @@
 [package]
 name = "tmaps-core"
-description = "Providers, geo types, and routing logic for tmaps"
+description = "The map engine of tmaps: geo types, vector tiles, projection, and labels, with no I/O"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -11,26 +11,15 @@ repository.workspace = true
 workspace = true
 
 [dependencies]
-etcetera = "0.11"
-flate2 = "1"
 geo-types = { version = "0.7", default-features = false }
 polyline = "0.11"
 prost = "0.14"
-reqwest = { version = "0.13", default-features = false, features = ["default-tls", "http2", "json", "query", "gzip", "system-proxy"] }
 schemars = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-sha2 = "0.10"
-sys-locale = "0.3"
-tempfile = "3"
 thiserror = "2"
-tokio = { version = "1", features = ["rt", "sync", "time"] }
-toml = "1"
-toml_edit = "0.25"
 unicode-segmentation = "1"
 unicode-width = "0.2"
 
 [dev-dependencies]
 insta = "1"
-tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync", "test-util", "time"] }
-wiremock = "0.6"

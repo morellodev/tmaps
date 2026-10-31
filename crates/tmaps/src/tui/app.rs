@@ -8,14 +8,14 @@ use crossterm::event::{
 use lru::LruCache;
 use ratatui::layout::{Position, Rect};
 use tmaps_core::LatLon;
-use tmaps_core::geocode::{Place, PlaceKind};
-use tmaps_core::places::validate_name;
 use tmaps_core::render::{
     Canvas, DOTS_PER_CELL_X, DOTS_PER_CELL_Y, PreparedTile, RouteLine, View, render,
 };
-use tmaps_core::routing::{Mode, Route};
 use tmaps_core::tiles::TileId;
 
+use crate::geocode::{Place, PlaceKind};
+use crate::places::validate_name;
+use crate::routing::{Mode, Route};
 use crate::tui::message::{Message, SourceInfo};
 use crate::tui::prompt::{self, Change, Input, Prompt, Search};
 use crate::tui::regions::Regions;
@@ -852,7 +852,7 @@ fn route_lines(routes: &[Route], selected: usize) -> Vec<RouteLine<'_>> {
 mod tests {
     use std::assert_matches;
 
-    use tmaps_core::geocode::Extent;
+    use crate::geocode::Extent;
 
     use super::*;
     use crate::tui::regions::ListRegion;

@@ -99,6 +99,12 @@ To test the MSRV (`rust-version` in `Cargo.toml`), run the tests in a container.
 docker run --rm -v "$PWD":/src:ro -w /src -e CARGO_TARGET_DIR=/tmp/target -e CI=true rust:<rust-version>-slim cargo test --workspace --locked
 ```
 
+`tmaps-core` does no I/O, so it must build for WebAssembly. To check this without a new rustup target on the host, run the check in a container:
+
+```sh
+docker run --rm -v "$PWD":/src:ro -w /src -e CARGO_TARGET_DIR=/tmp/target rust:<rust-version>-slim sh -c "rustup target add wasm32-unknown-unknown && cargo check -p tmaps-core --target wasm32-unknown-unknown --locked"
+```
+
 ## License
 
 [MIT](LICENSE)

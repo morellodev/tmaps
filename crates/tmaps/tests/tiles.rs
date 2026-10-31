@@ -1,7 +1,8 @@
 use std::time::SystemTime;
 
-use tmaps_core::http;
-use tmaps_core::tiles::{DEFAULT_CACHE_BYTES, DiskCache, TileId, TileSource};
+use tmaps::http;
+use tmaps::tiles::{DEFAULT_CACHE_BYTES, DiskCache, TileSource};
+use tmaps_core::tiles::TileId;
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 

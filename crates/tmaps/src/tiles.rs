@@ -1,0 +1,190 @@
+//! Vector tiles from a `TileJSON` endpoint, with a disk cache.
+
+mod cache;
+
+use std::io::Read;
+use std::time::{Duration, SystemTime};
+
+use reqwest::StatusCode;
+use reqwest::header::{CACHE_CONTROL, HeaderMap};
+use tmaps_core::tiles::{TileId, TileSet};
+use tokio::sync::OnceCell;
+
+pub use self::cache::{DEFAULT_CACHE_BYTES, DiskCache};
+use crate::http::body_snippet;
+use crate::{Error, Result};
+
+const DEFAULT_MAX_AGE: Duration = Duration::from_hours(24);
+/// Limits a `max-age` that would overflow the expiry time.
+const MAX_CACHE_AGE: Duration = Duration::from_hours(365 * 24);
+
+/// Fetches tiles through the disk cache. When the network fails, an expired tile in the cache
+/// is better than no tile, so the source returns it.
+pub struct TileSource {
+    client: reqwest::Client,
+    tilejson_url: String,
+    cache: DiskCache,
+    tile_set: OnceCell<TileSet>,
+}
+
+impl TileSource {
+    #[must_use]
+    pub fn new(client: reqwest::Client, tilejson_url: &str, cache: DiskCache) -> Self {
+        Self {
+            client,
+            tilejson_url: tilejson_url.to_owned(),
+            cache,
+            tile_set: OnceCell::new(),
+        }
+    }
+
+    /// # Errors
+    ///
+    /// [`Error::Network`] or [`Error::Provider`] if the `TileJSON` cannot be loaded.
+    pub async fn tile_set(&self) -> Result<&TileSet> {
+        self.tile_set
+            .get_or_try_init(|| async {
+                let body = self.get_cached(&self.tilejson_url).await?;
+                Ok(TileSet::from_json(&body.unwrap_or_default())?)
+            })
+            .await
+    }
+
+    /// Returns the decompressed tile, or an empty body when the server has no tile there.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::Network`] or [`Error::Provider`] if the tile cannot be loaded.
+    pub async fn tile(&self, id: TileId) -> Result<Vec<u8>> {
+        let url = self.tile_set().await?.url(id);
+        let body = self.get_cached(&url).await?.unwrap_or_default();
+        gunzip_if_needed(body)
+    }
+
+    #[must_use]
+    pub fn cache(&self) -> &DiskCache {
+        &self.cache
+    }
+
+    /// `None` means that the server has no content at `url` (HTTP 204 or 404).
+    async fn get_cached(&self, url: &str) -> Result<Option<Vec<u8>>> {
+        let cached = match self.cache.get(url).await {
+            Some(entry) if entry.is_fresh() => return Ok(Some(entry.body)),
+            cached => cached,
+        };
+        match self.get(url).await {
+            Ok(Some((body, max_age))) => {
+                if let Some(max_age) = max_age {
+                    self.cache
+                        .put(url, &body, SystemTime::now() + max_age)
+                        .await;
+                }
+                Ok(Some(body))
+            }
+            Ok(None) => Ok(None),
+            Err(error) => cached.map(|entry| Some(entry.body)).ok_or(error),
+        }
+    }
+
+    /// Returns the body and how long the cache can keep it (`None`: do not store it).
+    async fn get(&self, url: &str) -> Result<Option<(Vec<u8>, Option<Duration>)>> {
+        let response = self.client.get(url).send().await?;
+        let status = response.status();
+        if status == StatusCode::NO_CONTENT || status == StatusCode::NOT_FOUND {
+            return Ok(None);
+        }
+        let max_age = cache_lifetime(response.headers());
+        let body = response.bytes().await?;
+        if !status.is_success() {
+            return Err(Error::Provider(format!(
+                "the tile server returned HTTP {status}: {}",
+                body_snippet(&body)
+            )));
+        }
+        Ok(Some((body.to_vec(), max_age)))
+    }
+}
+
+/// Reads `Cache-Control`. A response without it stays in the cache for one day.
+fn cache_lifetime(headers: &HeaderMap) -> Option<Duration> {
+    let mut max_age = DEFAULT_MAX_AGE;
+    for directive in headers
+        .get_all(CACHE_CONTROL)
+        .iter()
+        .filter_map(|value| value.to_str().ok())
+        .flat_map(|value| value.split(','))
+        .map(str::trim)
+    {
+        if directive.eq_ignore_ascii_case("no-store") || directive.eq_ignore_ascii_case("no-cache")
+        {
+            return None;
+        }
+        if let Some(seconds) = directive.strip_prefix("max-age=")
+            && let Ok(seconds) = seconds.parse()
+        {
+            max_age = Duration::from_secs(seconds).min(MAX_CACHE_AGE);
+        }
+    }
+    Some(max_age)
+}
+
+/// Some servers send gzipped tiles without `Content-Encoding`, so reqwest does not decode them.
+fn gunzip_if_needed(body: Vec<u8>) -> Result<Vec<u8>> {
+    const GZIP_MAGIC: [u8; 2] = [0x1f, 0x8b];
+    if !body.starts_with(&GZIP_MAGIC) {
+        return Ok(body);
+    }
+    let mut decoded = Vec::new();
+    flate2::read::MultiGzDecoder::new(body.as_slice())
+        .read_to_end(&mut decoded)
+        .map_err(|error| Error::Provider(format!("invalid gzip tile: {error}")))?;
+    Ok(decoded)
+}
+
+#[cfg(test)]
+mod tests {
+    use reqwest::header::HeaderValue;
+
+    use super::*;
+
+    mod cache_lifetime {
+        use super::*;
+
+        fn headers(values: &[&'static str]) -> HeaderMap {
+            let mut headers = HeaderMap::new();
+            for value in values {
+                headers.append(CACHE_CONTROL, HeaderValue::from_static(value));
+            }
+            headers
+        }
+
+        #[test]
+        fn reads_max_age_across_headers() {
+            assert_eq!(
+                cache_lifetime(&headers(&["max-age=3600", "public"])),
+                Some(Duration::from_secs(3600))
+            );
+        }
+
+        #[test]
+        fn rejects_no_store() {
+            assert_eq!(cache_lifetime(&headers(&["public, no-store"])), None);
+        }
+
+        #[test]
+        fn defaults_to_one_day() {
+            assert_eq!(cache_lifetime(&HeaderMap::new()), Some(DEFAULT_MAX_AGE));
+        }
+    }
+
+    #[test]
+    fn gunzip_if_needed_decodes_gzip() {
+        use std::io::Write;
+        let mut encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast());
+        encoder.write_all(b"tile").unwrap();
+        assert_eq!(
+            gunzip_if_needed(encoder.finish().unwrap()).unwrap(),
+            b"tile"
+        );
+    }
+}

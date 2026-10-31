@@ -24,14 +24,14 @@ use crossterm::terminal::{
 };
 use futures_util::StreamExt;
 use ratatui::backend::CrosstermBackend;
-use tmaps_core::config::{Config, Paths, Units};
-use tmaps_core::http;
-use tmaps_core::providers::photon::Photon;
-use tmaps_core::providers::valhalla::Valhalla;
-use tmaps_core::tiles::{DEFAULT_CACHE_BYTES, DiskCache, TileSource};
 use tokio::sync::{Notify, mpsc};
 use tokio::time::MissedTickBehavior;
 
+use crate::config::{Config, Paths, Units};
+use crate::http;
+use crate::providers::photon::Photon;
+use crate::providers::valhalla::Valhalla;
+use crate::tiles::{DEFAULT_CACHE_BYTES, DiskCache, TileSource};
 use crate::tui::app::App;
 use crate::tui::loader::Loader;
 use crate::tui::message::Message;
@@ -41,7 +41,7 @@ use crate::tui::services::Services;
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error(transparent)]
-    Core(#[from] tmaps_core::Error),
+    App(#[from] crate::Error),
     #[error("terminal error: {0}")]
     Terminal(#[from] io::Error),
     #[error("cannot save the map view: {0}")]
