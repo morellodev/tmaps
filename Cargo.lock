@@ -3382,6 +3382,7 @@ dependencies = [
 name = "tmaps-canvas"
 version = "0.1.0"
 dependencies = [
+ "js-sys",
  "tmaps-core",
  "wasm-bindgen",
  "web-sys",

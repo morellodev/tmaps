@@ -43,7 +43,8 @@ impl Shape {
 }
 
 impl Part {
-    pub(crate) fn new(points: Vec<[f32; 2]>) -> Self {
+    #[must_use]
+    pub fn new(points: Vec<[f32; 2]>) -> Self {
         let corners = points.iter().fold(
             [[f32::INFINITY; 2], [f32::NEG_INFINITY; 2]],
             |[low, high], &[x, y]| {
@@ -181,10 +182,14 @@ impl PreparedTile {
         &self.shapes[class.index()]
     }
 
-    /// Frees the shapes and keeps the labels, for a renderer that keeps its own copy of the
+    /// A tile with `labels` and no shapes, for a renderer that keeps its own copy of the
     /// geometry, such as canvas paths.
-    pub fn clear_shapes(&mut self) {
-        self.shapes = Default::default();
+    #[must_use]
+    pub fn with_labels(labels: Vec<LabelCandidate>) -> Self {
+        Self {
+            labels,
+            ..Self::default()
+        }
     }
 
     #[must_use]
@@ -515,43 +520,6 @@ mod tests {
             .map(|(_, _, candidate)| candidate.text.as_str())
             .collect();
         assert_eq!(texts, ["Milano", "Bergamo", "Pavia", "Monza"]);
-    }
-
-    #[test]
-    fn cleared_tile_keeps_its_labels() {
-        let water = mvt::Layer::with_features(
-            "water",
-            4096,
-            vec![(
-                Geometry::Polygons(vec![vec![
-                    mvt::Point { x: 0, y: 0 },
-                    mvt::Point { x: 10, y: 0 },
-                    mvt::Point { x: 10, y: 10 },
-                ]]),
-                vec![],
-            )],
-        );
-        let place = mvt::Layer::with_features(
-            "place",
-            4096,
-            vec![(
-                Geometry::Points(vec![mvt::Point { x: 0, y: 0 }]),
-                vec![
-                    ("class", mvt::Value::String("city".to_owned())),
-                    ("name", mvt::Value::String("Milano".to_owned())),
-                ],
-            )],
-        );
-        let mut tile = PreparedTile::new(
-            &mvt::Tile {
-                layers: vec![water, place],
-            },
-            "it",
-        );
-        assert_eq!(tile.shapes(Class::Water).len(), 1);
-        tile.clear_shapes();
-        assert_eq!(tile.shapes(Class::Water), []);
-        assert_eq!(tile.labels().len(), 1);
     }
 
     #[test]

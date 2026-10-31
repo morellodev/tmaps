@@ -18,7 +18,7 @@ function showError(message) {
 let map;
 try {
   await init();
-  map = new WebMap(canvas, navigator.language);
+  map = new WebMap(canvas);
 } catch (error) {
   showError(`The map cannot start: ${error.message}`);
   throw error;
@@ -45,39 +45,48 @@ function redraw() {
     frame = 0;
     addArrivedTiles(start);
     fetchMissingTiles();
-    map.draw();
+    if (map.draw(start)) redraw();
     describeView();
   });
 }
 
+// Workers fetch and prepare the tiles, so that the main thread stays free for drawing.
+const arrived = [];
+const workers = Array.from({ length: 2 }, () => {
+  const worker = new Worker(new URL("worker.js", import.meta.url), { type: "module" });
+  worker.addEventListener("message", ({ data }) => {
+    if (data.error) {
+      console.warn(`Tile ${data.z}/${data.x}/${data.y} failed: ${data.error}`);
+      return;
+    }
+    arrived.push(data);
+    redraw();
+  });
+  worker.addEventListener("error", (event) => {
+    showError(`The map cannot load tiles: ${event.message || "the tile worker stopped"}`);
+  });
+  return worker;
+});
+
+let nextWorker = 0;
 function fetchMissingTiles() {
   const ids = map.missing_tiles();
   for (let i = 0; i < ids.length; i += 3) {
-    fetchTile(ids[i], ids[i + 1], ids[i + 2]);
+    const [z, x, y] = ids.slice(i, i + 3);
+    workers[nextWorker].postMessage({ z, x, y, url: map.tile_url(z, x, y), lang: navigator.language });
+    nextWorker = (nextWorker + 1) % workers.length;
   }
 }
 
-const arrived = [];
-async function fetchTile(z, x, y) {
-  try {
-    const response = await fetch(map.tile_url(z, x, y));
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    arrived.push({ z, x, y, bytes: new Uint8Array(await response.arrayBuffer()) });
-    redraw();
-  } catch (error) {
-    console.warn(`Tile ${z}/${x}/${y} failed`, error);
-  }
-}
-
-// A tile takes several milliseconds to prepare, so a frame prepares only what fits in its budget
-// and leaves the rest to the next frames.
+// A frame adds only the tiles that fit in its budget, and leaves the rest to the next frames.
 const TILE_BUDGET_MS = 4;
 function addArrivedTiles(start) {
   do {
     const tile = arrived.shift();
     if (!tile) return;
     try {
-      map.add_tile(tile.z, tile.x, tile.y, tile.bytes);
+      const paths = tile.paths.map(([kind, minZoom, data]) => [kind, minZoom, new Path2D(data)]);
+      map.add_tile(tile.z, tile.x, tile.y, tile.labels, paths);
     } catch (error) {
       console.warn(`Tile ${tile.z}/${tile.x}/${tile.y} failed`, error);
     }
@@ -218,5 +227,5 @@ try {
 } catch (error) {
   showError(`The map server is not available: ${error.message}`);
   showAttribution("");
-  map.draw();
+  map.draw(performance.now());
 }

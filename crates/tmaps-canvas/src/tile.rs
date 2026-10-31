@@ -1,41 +1,46 @@
 use std::fmt::Write as _;
 
 use tmaps_core::PreparedTile;
+use tmaps_core::label::LabelCandidate;
 use tmaps_core::scene::Shape;
 use tmaps_core::style::Class;
-use wasm_bindgen::JsValue;
 use web_sys::Path2d;
+
+use crate::labels::{LineAnchor, line_anchors};
 
 /// The width of a tile in path units. Canvas engines treat very short segments as empty, so
 /// paths use the MVT extent instead of fractions of the tile.
 pub const UNITS: f64 = 4096.0;
 
-/// A tile with its shapes as canvas paths, in [`UNITS`]. The browser builds the paths once, when
-/// the tile arrives, so that a frame only moves them with a transform. The tile keeps only the
-/// labels of its [`PreparedTile`].
+/// A tile with its shapes as canvas paths, in [`UNITS`], and the anchors of its line labels. The
+/// browser builds the paths once, when the tile arrives, so that a frame only moves them with a
+/// transform.
 pub struct CanvasTile {
-    prepared: PreparedTile,
+    labels: PreparedTile,
     /// For each class in [`Class::ALL`] order: one path for each min zoom of its shapes.
     paths: Vec<Vec<(f64, Path2d)>>,
+    /// For each label candidate: its [`line_anchors`].
+    anchors: Vec<Vec<LineAnchor>>,
 }
 
 impl CanvasTile {
-    /// # Errors
-    ///
-    /// If the `Path2D` constructor throws. Invalid path data does not make it throw: the path
-    /// stops at the first error.
-    pub fn new(mut prepared: PreparedTile) -> Result<Self, JsValue> {
-        let paths = Class::ALL
-            .iter()
-            .map(|&class| {
-                path_data(prepared.shapes(class), class.is_area())
-                    .into_iter()
-                    .map(|(min_zoom, data)| Ok((min_zoom, Path2d::new_with_path_string(&data)?)))
-                    .collect()
-            })
-            .collect::<Result<_, JsValue>>()?;
-        prepared.clear_shapes();
-        Ok(Self { prepared, paths })
+    /// `paths` gives the paths of [`tile_paths`], with the data in a `Path2D`.
+    pub fn new(
+        labels: Vec<LabelCandidate>,
+        paths: impl IntoIterator<Item = TilePath<Path2d>>,
+    ) -> Self {
+        let mut by_class: Vec<Vec<_>> = Class::ALL.iter().map(|_| Vec::new()).collect();
+        for path in paths {
+            if let Some(class) = by_class.get_mut(path.class) {
+                class.push((path.min_zoom, path.data));
+            }
+        }
+        let anchors = labels.iter().map(line_anchors).collect();
+        Self {
+            labels: PreparedTile::with_labels(labels),
+            paths: by_class,
+            anchors,
+        }
     }
 
     /// The paths of `class` that `zoom` shows.
@@ -47,12 +52,42 @@ impl CanvasTile {
             .filter(move |(min_zoom, _)| zoom >= *min_zoom)
             .map(|(_, path)| path)
     }
+
+    /// The [`line_anchors`] of the label candidate at `index`.
+    pub fn anchors(&self, index: usize) -> &[LineAnchor] {
+        self.anchors.get(index).map_or(&[], Vec::as_slice)
+    }
 }
 
 impl AsRef<PreparedTile> for CanvasTile {
     fn as_ref(&self) -> &PreparedTile {
-        &self.prepared
+        &self.labels
     }
+}
+
+/// The path of the shapes of one class that show from `min_zoom`.
+pub struct TilePath<D> {
+    /// The index of the class in [`Class::ALL`].
+    pub class: usize,
+    pub min_zoom: f64,
+    pub data: D,
+}
+
+/// The paths of the shapes of `tile`, as SVG path data.
+pub fn tile_paths(tile: &PreparedTile) -> Vec<TilePath<String>> {
+    Class::ALL
+        .into_iter()
+        .enumerate()
+        .flat_map(|(class, each)| {
+            path_data(tile.shapes(each), each.is_area())
+                .into_iter()
+                .map(move |(min_zoom, data)| TilePath {
+                    class,
+                    min_zoom,
+                    data,
+                })
+        })
+        .collect()
 }
 
 /// SVG path data of `shapes`, one string for each min zoom. Areas close their rings. One string

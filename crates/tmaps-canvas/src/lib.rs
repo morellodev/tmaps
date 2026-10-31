@@ -2,9 +2,11 @@
 //! [`WebMap`]; this crate does no I/O.
 
 mod cache;
+mod fade;
 mod labels;
 mod paint;
 mod tile;
 mod web;
+mod wire;
 
-pub use web::WebMap;
+pub use web::{WebMap, prepare_tile};
