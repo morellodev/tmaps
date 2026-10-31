@@ -72,8 +72,7 @@ fn path_data(shapes: &[Shape], closed: bool) -> Vec<(f64, String)> {
         for part in shape.parts() {
             for (step, &[x, y]) in part.points().iter().enumerate() {
                 let command = if step == 0 { 'M' } else { 'L' };
-                let (x, y) = (f64::from(x) * UNITS, f64::from(y) * UNITS);
-                let _ = write!(data, "{command}{x} {y}");
+                let _ = write!(data, "{command}{} {}", unit(x), unit(y));
             }
             if closed && !part.points().is_empty() {
                 data.push('Z');
@@ -82,6 +81,17 @@ fn path_data(shapes: &[Shape], closed: bool) -> Vec<(f64, String)> {
     }
     groups.retain(|(_, data)| !data.is_empty());
     groups
+}
+
+/// A tile fraction in whole path units. Most tiles use the 4096 extent, so this is exact for
+/// them, and integers format much faster than floats.
+fn unit(fraction: f32) -> i32 {
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "tile geometry stays within a few tile widths of the tile"
+    )]
+    let unit = (f64::from(fraction) * UNITS).round() as i32;
+    unit
 }
 
 #[cfg(test)]
