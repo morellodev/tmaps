@@ -300,12 +300,9 @@ impl WebMap {
         context.set_transform(ratio, 0.0, 0.0, ratio, 0.0, 0.0)?;
         context.set_line_join("round");
         context.set_line_cap("round");
-        let scene = Scene::new(self.view, units_x, units_y, tile_set.max_zoom, |id| {
-            tiles.get(id)
-        });
         if self.route.len() > 1 {
             let path = Path2d::new()?;
-            let points = scene.line_on_screen(&self.route);
+            let points = self.view.line_on_screen(&self.route, units_x, units_y);
             add_line(
                 &path,
                 points
@@ -333,6 +330,9 @@ impl WebMap {
             .is_none_or(|last| !(0.0..PLACE_MS).contains(&(now - last.time)));
         if stale && due {
             let units = (units_x, units_y);
+            let scene = Scene::new(view, units_x, units_y, tile_set.max_zoom, |id| {
+                tiles.get(id)
+            });
             place_labels(
                 context,
                 &scene,
