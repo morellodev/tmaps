@@ -15,10 +15,36 @@ function showError(message) {
   status.classList.replace("visually-hidden", "error");
 }
 
+// The page compiles the module once and gives it to the workers, so that they do not fetch and
+// compile it again.
+const wasm = WebAssembly.compileStreaming(fetch(new URL("pkg/tmaps_canvas_bg.wasm", import.meta.url)));
+
+// Workers fetch and prepare the TileJSON document and the tiles, so that the main thread only
+// draws. Half of the cores, as in MapLibre: the main thread and the browser use the others.
+const WORKER_COUNT = Math.min(4, Math.max(1, Math.floor(navigator.hardwareConcurrency / 2)));
+const tileSet = Promise.withResolvers();
+const workers = Array.from({ length: WORKER_COUNT }, () => {
+  const worker = new Worker(new URL("worker.js", import.meta.url), { type: "module" });
+  const entry = { worker, jobs: 0 };
+  worker.addEventListener("message", ({ data }) => {
+    if (data.type === "tile") tileArrived(entry, data);
+    else if (data.type === "tileset") tileSet.resolve(data);
+    else if (data.type === "failed") showError(`The map cannot load tiles: ${data.error}`);
+  });
+  worker.addEventListener("messageerror", () => console.warn("A message from a tile worker cannot be read"));
+  worker.addEventListener("error", (event) => {
+    showError(`The map cannot load tiles: ${event.message || "the tile worker stopped"}`);
+  });
+  return entry;
+});
+workers[0].worker.postMessage({ type: "tileset", url: TILEJSON });
+
 let map;
 try {
-  await init();
+  const module = await wasm;
+  await init({ module_or_path: module });
   map = new WebMap(canvas);
+  for (const { worker } of workers) worker.postMessage({ type: "init", module, lang: navigator.language });
 } catch (error) {
   showError(`The map cannot start: ${error.message}`);
   throw error;
@@ -45,37 +71,55 @@ function redraw() {
     frame = 0;
     stepGlide(start);
     addArrivedTiles(start);
-    fetchMissingTiles();
+    requestTiles();
     if (map.draw(start)) redraw();
     describeView();
   });
 }
 
-// Workers fetch and prepare the tiles, so that the main thread stays free for drawing.
 const arrived = [];
-const workers = Array.from({ length: 2 }, () => {
-  const worker = new Worker(new URL("worker.js", import.meta.url), { type: "module" });
-  worker.addEventListener("message", ({ data }) => {
-    if (data.error) {
-      console.warn(`Tile ${data.z}/${data.x}/${data.y} failed: ${data.error}`);
-      return;
-    }
-    arrived.push(data);
-    redraw();
-  });
-  worker.addEventListener("error", (event) => {
-    showError(`The map cannot load tiles: ${event.message || "the tile worker stopped"}`);
-  });
-  return worker;
-});
+// Each fetch of a tile is a job with its own number, so that a late result of a cancelled job
+// cannot close a newer job for the same tile.
+const jobs = new Map();
+const tiles = new Map();
+let lastJob = 0;
 
-let nextWorker = 0;
-function fetchMissingTiles() {
-  const ids = map.missing_tiles();
-  for (let i = 0; i < ids.length; i += 3) {
-    const [z, x, y] = ids.slice(i, i + 3);
-    workers[nextWorker].postMessage({ z, x, y, url: map.tile_url(z, x, y), lang: navigator.language });
-    nextWorker = (nextWorker + 1) % workers.length;
+function tileArrived(entry, result) {
+  const job = jobs.get(result.job);
+  if (!job) return;
+  jobs.delete(result.job);
+  tiles.delete(job.key);
+  entry.jobs -= 1;
+  if (result.error) {
+    console.warn(`Tile ${job.key} failed: ${result.error}`);
+    return;
+  }
+  arrived.push({ ...job.tile, labels: result.labels, paths: result.paths });
+  redraw();
+}
+
+function requestTiles() {
+  const stale = map.stale_tiles();
+  for (let i = 0; i < stale.length; i += 3) {
+    const key = stale.slice(i, i + 3).join("/");
+    const id = tiles.get(key);
+    if (id === undefined) continue;
+    const { entry } = jobs.get(id);
+    entry.worker.postMessage({ type: "cancel", job: id });
+    entry.jobs -= 1;
+    jobs.delete(id);
+    tiles.delete(key);
+  }
+  const missing = map.missing_tiles();
+  for (let i = 0; i < missing.length; i += 3) {
+    const [z, x, y] = missing.slice(i, i + 3);
+    const key = `${z}/${x}/${y}`;
+    const entry = workers.reduce((least, each) => (each.jobs < least.jobs ? each : least));
+    const id = ++lastJob;
+    entry.worker.postMessage({ type: "tile", job: id, url: map.tile_url(z, x, y) });
+    entry.jobs += 1;
+    jobs.set(id, { entry, key, tile: { z, x, y } });
+    tiles.set(key, id);
   }
 }
 
@@ -263,11 +307,10 @@ function link(href, text) {
 }
 
 try {
-  const response = await fetch(TILEJSON);
-  if (!response.ok) throw new Error(`HTTP ${response.status}`);
-  const tileJson = await response.text();
-  map.set_tile_set(tileJson);
-  showAttribution(JSON.parse(tileJson).attribution ?? "");
+  const { json, attribution, error } = await tileSet.promise;
+  if (error) throw new Error(error);
+  map.set_tile_set(json);
+  showAttribution(attribution);
   redraw();
 } catch (error) {
   showError(`The map server is not available: ${error.message}`);

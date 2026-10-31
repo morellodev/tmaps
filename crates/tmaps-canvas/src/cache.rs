@@ -6,8 +6,8 @@ const MAX_TILES: usize = 256;
 
 /// The loaded tiles, and the tiles that the page fetches. When the cache is full, the tile that
 /// the map used least recently goes first. The tiles of the current frame always stay, so the
-/// cache grows past its limit when more tiles are visible. A tile that fails stays requested, so
-/// that the page does not ask for it in a loop.
+/// cache grows past its limit when more tiles are visible. A tile that fails stays requested while
+/// it is visible, so that the page does not ask for it in a loop.
 #[derive(Debug)]
 pub struct TileCache<T> {
     tiles: HashMap<TileId, (T, u64)>,
@@ -48,6 +48,21 @@ impl<T> TileCache<T> {
             }
         }
         missing
+    }
+
+    /// Gives the requested tiles that are not loaded and not in `visible`, so that the page can
+    /// stop their fetch. They do not count as requested from now.
+    pub fn cancel(&mut self, visible: &[TileId]) -> Vec<TileId> {
+        let stale: Vec<TileId> = self
+            .requested
+            .iter()
+            .filter(|id| !self.tiles.contains_key(id) && !visible.contains(id))
+            .copied()
+            .collect();
+        for id in &stale {
+            self.requested.remove(id);
+        }
+        stale
     }
 
     pub fn add(&mut self, id: TileId, tile: T) {
@@ -98,6 +113,16 @@ mod tests {
         let mut cache = TileCache::<()>::default();
         cache.add(id(1), ());
         assert_eq!(cache.request([id(1)]), []);
+    }
+
+    #[test]
+    fn tile_that_leaves_the_view_before_it_loads_is_cancelled() {
+        let mut cache = TileCache::<()>::default();
+        cache.request([id(1), id(2), id(3)]);
+        cache.add(id(3), ());
+        assert_eq!(cache.cancel(&[id(1)]), [id(2)]);
+        assert_eq!(cache.cancel(&[id(1)]), []);
+        assert_eq!(cache.request([id(1), id(2), id(3)]), [id(2)]);
     }
 
     #[test]

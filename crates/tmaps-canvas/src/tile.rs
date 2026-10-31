@@ -6,7 +6,7 @@ use tmaps_core::scene::Shape;
 use tmaps_core::style::Class;
 use web_sys::Path2d;
 
-use crate::labels::{LineAnchor, line_anchors};
+use crate::labels::LineAnchor;
 
 /// The width of a tile in path units. Canvas engines treat very short segments as empty, so
 /// paths use the MVT extent instead of fractions of the tile.
@@ -19,14 +19,15 @@ pub struct CanvasTile {
     labels: PreparedTile,
     /// For each class in [`Class::ALL`] order: one path for each min zoom of its shapes.
     paths: Vec<Vec<(f64, Path2d)>>,
-    /// For each label candidate: its [`line_anchors`].
+    /// For each label candidate: its [`crate::labels::line_anchors`].
     anchors: Vec<Vec<LineAnchor>>,
 }
 
 impl CanvasTile {
-    /// `paths` gives the paths of [`tile_paths`], with the data in a `Path2D`.
+    /// `labels` gives each label candidate with its [`crate::labels::line_anchors`]. `paths`
+    /// gives the paths of [`tile_paths`], with the data in a `Path2D`.
     pub fn new(
-        labels: Vec<LabelCandidate>,
+        labels: Vec<(LabelCandidate, Vec<LineAnchor>)>,
         paths: impl IntoIterator<Item = TilePath<Path2d>>,
     ) -> Self {
         let mut by_class: Vec<Vec<_>> = Class::ALL.iter().map(|_| Vec::new()).collect();
@@ -35,7 +36,7 @@ impl CanvasTile {
                 class.push((path.min_zoom, path.data));
             }
         }
-        let anchors = labels.iter().map(line_anchors).collect();
+        let (labels, anchors) = labels.into_iter().unzip();
         Self {
             labels: PreparedTile::with_labels(labels),
             paths: by_class,
@@ -53,7 +54,7 @@ impl CanvasTile {
             .map(|(_, path)| path)
     }
 
-    /// The [`line_anchors`] of the label candidate at `index`.
+    /// The [`crate::labels::line_anchors`] of the label candidate at `index`.
     pub fn anchors(&self, index: usize) -> &[LineAnchor] {
         self.anchors.get(index).map_or(&[], Vec::as_slice)
     }

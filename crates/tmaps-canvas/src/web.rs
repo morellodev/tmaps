@@ -158,16 +158,17 @@ impl WebMap {
     /// give it to [`WebMap::add_tile`].
     #[must_use]
     pub fn missing_tiles(&mut self) -> Vec<u32> {
-        let Some(tile_set) = &self.tile_set else {
-            return Vec::new();
-        };
-        let (width, height) = self.units();
-        let visible = self.view.visible_tiles(width, height, tile_set.max_zoom);
-        self.tiles
-            .request(visible.into_iter().map(|tile| tile.id))
-            .into_iter()
-            .flat_map(|id| [u32::from(id.z), id.x, id.y])
-            .collect()
+        let visible = self.visible_tiles();
+        flat_ids(self.tiles.request(visible))
+    }
+
+    /// The tiles that [`WebMap::missing_tiles`] gave and that left the view before they came, as
+    /// `[z, x, y, z, x, y, …]`. Stop their fetch: they come again from
+    /// [`WebMap::missing_tiles`] when they are visible again.
+    #[must_use]
+    pub fn stale_tiles(&mut self) -> Vec<u32> {
+        let visible = self.visible_tiles();
+        flat_ids(self.tiles.cancel(&visible))
     }
 
     #[must_use]
@@ -358,6 +359,24 @@ impl WebMap {
         let (width, height) = self.size();
         (width / CSS_PER_UNIT, height / CSS_PER_UNIT)
     }
+
+    fn visible_tiles(&self) -> Vec<TileId> {
+        let Some(tile_set) = &self.tile_set else {
+            return Vec::new();
+        };
+        let (width, height) = self.units();
+        self.view
+            .visible_tiles(width, height, tile_set.max_zoom)
+            .into_iter()
+            .map(|tile| tile.id)
+            .collect()
+    }
+}
+
+fn flat_ids(ids: Vec<TileId>) -> Vec<u32> {
+    ids.into_iter()
+        .flat_map(|id| [u32::from(id.z), id.x, id.y])
+        .collect()
 }
 
 /// Places the labels of `scene` on a screen of `units`, and sets the placed labels to fade in.

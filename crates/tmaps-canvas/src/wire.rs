@@ -1,8 +1,10 @@
-//! Label candidates as bytes, so that a worker can prepare a tile and send its labels to the
-//! main thread in a transferable buffer. All numbers are little-endian.
+//! Label candidates and their line anchors as bytes, so that a worker can prepare a tile and
+//! send its labels to the main thread in a transferable buffer. All numbers are little-endian.
 
 use tmaps_core::label::{Anchor, LabelCandidate, LabelClass};
 use tmaps_core::scene::Part;
+
+use crate::labels::{LineAnchor, line_anchors};
 
 /// The classes in the order of their tags.
 const CLASSES: [LabelClass; 8] = [
@@ -45,13 +47,22 @@ pub fn encode(labels: &[LabelCandidate]) -> Vec<u8> {
                 }
             }
         }
+        let anchors = line_anchors(label);
+        put_len(&mut bytes, anchors.len());
+        for anchor in anchors {
+            put_point(&mut bytes, anchor.at);
+            bytes.push(anchor.level);
+            bytes.extend(anchor.spacing.to_le_bytes());
+            bytes.extend(anchor.room.to_le_bytes());
+        }
     }
     bytes
 }
 
-/// The labels in `bytes` from [`encode`], or `None` if `bytes` has another form.
+/// The labels in `bytes` from [`encode`], each with its [`line_anchors`], or `None` if `bytes`
+/// has another form.
 #[must_use]
-pub fn decode(bytes: &[u8]) -> Option<Vec<LabelCandidate>> {
+pub fn decode(bytes: &[u8]) -> Option<Vec<(LabelCandidate, Vec<LineAnchor>)>> {
     let mut reader = Reader(bytes);
     let mut labels = Vec::new();
     while !reader.0.is_empty() {
@@ -75,14 +86,26 @@ pub fn decode(bytes: &[u8]) -> Option<Vec<LabelCandidate>> {
             }
             _ => return None,
         };
-        labels.push(LabelCandidate {
+        let count = reader.len()?;
+        let anchors = (0..count)
+            .map(|_| {
+                Some(LineAnchor {
+                    at: reader.point()?,
+                    level: reader.byte()?,
+                    spacing: f32::from_le_bytes(reader.array()?),
+                    room: f32::from_le_bytes(reader.array()?),
+                })
+            })
+            .collect::<Option<_>>()?;
+        let label = LabelCandidate {
             class,
             rank,
             min_zoom,
             max_zoom,
             text,
             anchor,
-        });
+        };
+        labels.push((label, anchors));
     }
     Some(labels)
 }
@@ -157,7 +180,11 @@ mod tests {
     fn labels_of_a_tile_survive_the_bytes() {
         for name in ["5-16-11", "14-8610-5863"] {
             let labels = fixture(name).labels().to_vec();
-            assert_eq!(decode(&encode(&labels)), Some(labels), "tile {name}");
+            let expected = labels
+                .iter()
+                .map(|label| (label.clone(), line_anchors(label)))
+                .collect();
+            assert_eq!(decode(&encode(&labels)), Some(expected), "tile {name}");
         }
     }
 

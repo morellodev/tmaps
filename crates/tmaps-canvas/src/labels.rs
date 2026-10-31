@@ -27,13 +27,13 @@ const KEEP: f64 = 2.0;
 /// so the label does not slide along the line when the map moves.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct LineAnchor {
-    at: [f32; 2],
+    pub at: [f32; 2],
     /// 0 for the middle of a line, 1 for its quarters, 2 for its eighths, and so on.
-    level: u8,
+    pub level: u8,
     /// The distance to the nearest point of the same or a lower level, in tile widths.
-    spacing: f32,
+    pub spacing: f32,
     /// The length of line around the point, in tile widths: the widest text that fits.
-    room: f32,
+    pub room: f32,
 }
 
 /// The points where the label of `candidate` can go, if it labels lines. Points outside the tile
