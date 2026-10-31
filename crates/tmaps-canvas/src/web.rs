@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use js_sys::{Array, Uint8Array};
 use tmaps_core::label::LabelClass;
@@ -8,12 +8,16 @@ use tmaps_core::tiles::{TileId, TileSet};
 use tmaps_core::view::{TILE_SIZE, View, VisibleTile};
 use tmaps_core::{LatLon, PreparedTile};
 use wasm_bindgen::prelude::*;
-use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement, Path2d};
+use web_sys::{
+    CanvasRenderingContext2d, ContextAttributes2d, HtmlCanvasElement, ImageBitmap, OffscreenCanvas,
+    OffscreenCanvasRenderingContext2d, Path2d,
+};
 
 use crate::cache::TileCache;
 use crate::fade::Fades;
 use crate::labels::{self, Candidate};
 use crate::paint::{Line, Palette};
+use crate::raster::{self, BLEED, Look, Need, RasterCache};
 use crate::tile::{self, CanvasTile, TilePath, UNITS};
 use crate::wire;
 
@@ -25,6 +29,25 @@ const CSS_PER_UNIT: f64 = 2.0;
 /// placement takes milliseconds. Between placements, the labels move with the map.
 const PLACE_MS: f64 = 100.0;
 
+/// The longest time that one frame draws cell bitmaps, in milliseconds. A frame starts a cell only
+/// if the mean time of a cell fits. While the zoom moves, a cell that does not fit waits, and a
+/// scaled bitmap shows in its place. One cell can take longer than a frame.
+const RASTER_BUDGET_MS: f64 = 6.0;
+
+/// The most cells that one frame draws while the zoom moves. Safari draws a canvas in its GPU
+/// process after the call returns, so the time of the call does not show the cost of a cell.
+const MOVING_CELLS: usize = 1;
+
+/// The weight of the last cell in the mean time to draw one cell.
+const PAINT_MS_WEIGHT: f64 = 0.25;
+
+/// The cell bitmaps that are not on the screen keep at most this many screens of pixels.
+const RASTER_SCREENS: f64 = 3.0;
+
+/// The time without a zoom change, in milliseconds, after which the cells are drawn again at the
+/// zoom of the view. Between the steps of a wheel gesture, a new bitmap would be out of date soon.
+const SETTLE_MS: f64 = 150.0;
+
 /// A map on an HTML canvas. JavaScript fetches the `TileJSON` document and the tiles, and gives
 /// them to the map: the map does no I/O. All positions are in CSS pixels.
 #[wasm_bindgen]
@@ -34,6 +57,11 @@ pub struct WebMap {
     tile_set: Option<TileSet>,
     view: View,
     tiles: TileCache<CanvasTile>,
+    rasters: RasterCache<ImageBitmap>,
+    painter: Option<Painter>,
+    /// The zoom of the view, and the time in milliseconds when the view got it.
+    zoom_since: Option<(f64, f64)>,
+    drawn_dark: Option<bool>,
     route: Vec<LatLon>,
     dark: bool,
     widths: HashMap<LabelClass, HashMap<String, f64>>,
@@ -65,16 +93,17 @@ impl WebMap {
     /// If the canvas has no 2D context.
     #[wasm_bindgen(constructor)]
     pub fn new(canvas: HtmlCanvasElement) -> Result<WebMap, JsValue> {
-        let context = canvas
-            .get_context("2d")?
-            .ok_or_else(|| JsError::new("the canvas has no 2D context"))?
-            .dyn_into::<CanvasRenderingContext2d>()?;
+        let context = opaque_context(&canvas)?;
         Ok(Self {
             canvas,
             context,
             tile_set: None,
             view: View::new(LatLon::new(0.0, 0.0).map_err(js)?, 1.0),
             tiles: TileCache::default(),
+            rasters: RasterCache::default(),
+            painter: None,
+            zoom_since: None,
+            drawn_dark: None,
             route: Vec::new(),
             dark: false,
             widths: HashMap::new(),
@@ -89,6 +118,9 @@ impl WebMap {
     /// If `tilejson` is not a `TileJSON` document with a tile URL.
     pub fn set_tile_set(&mut self, tilejson: &str) -> Result<(), JsValue> {
         self.tile_set = Some(TileSet::from_json(tilejson.as_bytes()).map_err(js)?);
+        for bitmap in self.rasters.clear() {
+            bitmap.close();
+        }
         Ok(())
     }
 
@@ -217,12 +249,14 @@ impl WebMap {
 
     /// Draws the map at the size of the canvas element, with sharp lines on high-density screens.
     /// `now` is the frame time in milliseconds, for example the time that `requestAnimationFrame`
-    /// gives. Returns `true` while labels fade in or out: draw one more frame then.
+    /// gives. Returns `true` while labels fade in or out or cells wait for their bitmaps: draw
+    /// one more frame then.
     ///
     /// # Errors
     ///
     /// If the browser rejects a canvas call.
     pub fn draw(&mut self, now: f64) -> Result<bool, JsValue> {
+        let (settled, restyled) = self.changes(now);
         let (width, height) = self.size();
         let ratio = web_sys::window().map_or(1.0, |window| window.device_pixel_ratio());
         let (pixels_x, pixels_y) = (device_pixels(width * ratio), device_pixels(height * ratio));
@@ -240,14 +274,28 @@ impl WebMap {
         };
         let tiles = &self.tiles;
         let (units_x, units_y) = self.units();
+        let cells_wait = draw_cells(
+            context,
+            &mut self.painter,
+            &mut self.rasters,
+            tiles,
+            Frame {
+                view: self.view,
+                units: (units_x, units_y),
+                max_zoom: tile_set.max_zoom,
+                ratio,
+                palette,
+                dark: self.dark,
+                settled,
+                restyled,
+            },
+        )?;
+        context.set_transform(ratio, 0.0, 0.0, ratio, 0.0, 0.0)?;
+        context.set_line_join("round");
+        context.set_line_cap("round");
         let scene = Scene::new(self.view, units_x, units_y, tile_set.max_zoom, |id| {
             tiles.get(id)
         });
-        context.set_line_join("round");
-        context.set_line_cap("round");
-        for class in Class::ALL {
-            draw_class(context, &scene, class, palette)?;
-        }
         if self.route.len() > 1 {
             let path = Path2d::new()?;
             let points = scene.line_on_screen(&self.route);
@@ -308,7 +356,7 @@ impl WebMap {
             context.fill_text(label, x, y)?;
         }
         context.set_global_alpha(1.0);
-        Ok(fading || stale && !due)
+        Ok(fading || stale && !due || cells_wait)
     }
 }
 
@@ -424,45 +472,282 @@ fn place_labels(
     }));
 }
 
-/// Fills or strokes the paths of `class`, with one transform for each tile.
-fn draw_class(
-    context: &CanvasRenderingContext2d,
-    scene: &Scene<'_, CanvasTile>,
-    class: Class,
+impl WebMap {
+    /// Whether the zoom did not change for [`SETTLE_MS`] before `now`, and whether the palette
+    /// changed since the last frame.
+    fn changes(&mut self, now: f64) -> (bool, bool) {
+        let zoom = self.view.zoom();
+        if self
+            .zoom_since
+            .is_none_or(|(last, _)| (last - zoom).abs() > f64::EPSILON)
+        {
+            self.zoom_since = Some((zoom, now));
+        }
+        let settled = self
+            .zoom_since
+            .is_some_and(|(_, since)| now - since >= SETTLE_MS);
+        let restyled = self.drawn_dark.replace(self.dark) != Some(self.dark);
+        (settled, restyled)
+    }
+}
+
+impl Drop for WebMap {
+    fn drop(&mut self) {
+        for bitmap in self.rasters.clear() {
+            bitmap.close();
+        }
+    }
+}
+
+/// The canvas that draws the cells, one at a time. Each cell becomes an `ImageBitmap`, which does
+/// not change, so a browser can keep it where its screen canvas reads it fast. Firefox reads
+/// a canvas that is still a draw target back from the GPU at each copy.
+struct Painter {
+    canvas: OffscreenCanvas,
+    context: OffscreenCanvasRenderingContext2d,
+    /// The mean time to draw one cell, in milliseconds.
+    mean_ms: f64,
+}
+
+impl Painter {
+    fn new() -> Result<Self, JsValue> {
+        let canvas = OffscreenCanvas::new(1, 1)?;
+        let options = ContextAttributes2d::new();
+        options.set_alpha(false);
+        let context = canvas
+            .get_context_with_context_options("2d", &options)?
+            .ok_or_else(|| JsError::new("the offscreen canvas has no 2D context"))?
+            .dyn_into::<OffscreenCanvasRenderingContext2d>()?;
+        Ok(Self {
+            canvas,
+            context,
+            mean_ms: 0.0,
+        })
+    }
+}
+
+#[derive(Clone, Copy)]
+struct Frame {
+    view: View,
+    units: (f64, f64),
+    max_zoom: u8,
+    ratio: f64,
     palette: Palette,
-) -> Result<(), JsValue> {
-    let zoom = scene.view().zoom();
-    let (area, line) = (palette.area(class), palette.line(class, zoom));
-    for scene_tile in scene.tiles() {
-        let mut paths = scene_tile.tile.paths(class, zoom).peekable();
-        if paths.peek().is_none() {
+    dark: bool,
+    /// The zoom did not change for [`SETTLE_MS`].
+    settled: bool,
+    /// The palette changed, so that all cells are drawn at once and the old and new palettes do not
+    /// show side by side.
+    restyled: bool,
+}
+
+/// Draws the cell bitmaps that are missing or out of date, for at most [`RASTER_BUDGET_MS`], then
+/// copies the bitmaps to the screen. Returns `true` if a cell still needs a new bitmap.
+fn draw_cells(
+    context: &CanvasRenderingContext2d,
+    painter: &mut Option<Painter>,
+    rasters: &mut RasterCache<ImageBitmap>,
+    tiles: &TileCache<CanvasTile>,
+    frame: Frame,
+) -> Result<bool, JsValue> {
+    let Frame {
+        view,
+        units: (units_x, units_y),
+        ratio,
+        ..
+    } = frame;
+    let zoom = view.zoom();
+    let cells: Vec<_> = raster::grid(view, units_x, units_y)
+        .into_iter()
+        .map(|cell| {
+            let source = raster::source(&cell, frame.max_zoom, |id| tiles.get(id).is_some());
+            (css_tile(cell), source.map(css_tile))
+        })
+        .collect();
+    let look = |source: &VisibleTile| Look {
+        source: source.id,
+        zoom,
+        ratio,
+        dark: frame.dark,
+    };
+    rasters.begin_frame();
+    let mut jobs: Vec<_> = cells
+        .iter()
+        .filter_map(|(cell, source)| {
+            let need = rasters.need(cell.id, look(source.as_ref()?), frame.settled)?;
+            Some((need, cell, source.as_ref()?))
+        })
+        .collect();
+    // A cell that has no bitmap and no fallback shows as a hole, so it comes first.
+    jobs.sort_by_cached_key(|(need, cell, _)| {
+        let shows = *need != Need::Empty || !rasters.fallback(cell).is_empty();
+        (*need, shows)
+    });
+    let performance = web_sys::window().and_then(|window| window.performance());
+    let now = || performance.as_ref().map_or(0.0, web_sys::Performance::now);
+    let start = now();
+    let mut drawn = HashSet::new();
+    for (need, cell, source) in jobs {
+        let hole = need == Need::Empty && rasters.fallback(cell).is_empty();
+        let mean_ms = painter.as_ref().map_or(0.0, |painter| painter.mean_ms);
+        let fits = now() - start + mean_ms <= RASTER_BUDGET_MS
+            && (frame.settled || drawn.len() < MOVING_CELLS);
+        if !(frame.restyled || fits || drawn.is_empty() && (frame.settled || hole)) {
+            break;
+        }
+        // A cell shows more than once when the world is narrower than the screen.
+        if !drawn.insert(cell.id)
+            || rasters.need(cell.id, look(source), frame.settled) != Some(need)
+        {
+            continue;
+        }
+        let Some(tile) = tiles.get(source.id) else {
+            continue;
+        };
+        let painter = match painter {
+            Some(painter) => painter,
+            None => painter.insert(Painter::new()?),
+        };
+        let paint_start = now();
+        let bitmap = paint_cell(painter, cell, source, tile, zoom, ratio, frame.palette)?;
+        painter.mean_ms += (now() - paint_start - painter.mean_ms) * PAINT_MS_WEIGHT;
+        let side = f64::from(bitmap.width());
+        if let Some(old) = rasters.insert(cell.id, bitmap, look(source), side * side) {
+            old.close();
+        }
+    }
+
+    context.set_transform(1.0, 0.0, 0.0, 1.0, 0.0, 0.0)?;
+    for (cell, _) in &cells {
+        if let Some((bitmap, drawn)) = rasters.get(cell.id) {
+            blit(context, bitmap, cell, drawn, zoom, ratio)?;
+            continue;
+        }
+        let fallback = rasters.fallback(cell);
+        if fallback.is_empty() {
             continue;
         }
         context.save();
-        clip_to(context, css_rect(scene_tile.clip));
-        let VisibleTile {
-            left, top, size, ..
-        } = css_tile(scene_tile.placement);
-        let scale = size / UNITS;
-        context.transform(scale, 0.0, 0.0, scale, left, top)?;
-        for path in paths {
-            if let Some(color) = area {
-                context.set_fill_style_str(color);
-                context.fill_with_path_2d(path);
-            } else if let Some(line) = line {
-                stroke(
-                    context,
-                    path,
-                    Line {
-                        width: line.width / scale,
-                        ..line
-                    },
-                );
+        clip_to(context, device_rect(cell, ratio));
+        for other in fallback {
+            if let Some((bitmap, drawn)) = rasters.get(other.id) {
+                blit(context, bitmap, &other, drawn, zoom, ratio)?;
             }
         }
         context.restore();
     }
-    Ok(())
+    let screen = f64::from(
+        context
+            .canvas()
+            .map_or(0, |canvas| canvas.width() * canvas.height()),
+    );
+    for bitmap in rasters.evict(RASTER_SCREENS * screen) {
+        bitmap.close();
+    }
+    Ok(cells.iter().any(|(cell, source)| {
+        source
+            .as_ref()
+            .is_some_and(|source| rasters.need(cell.id, look(source), true).is_some())
+    }))
+}
+
+/// Draws the shapes of `tile`, at `source` on the screen, into a new bitmap of `cell`. Both
+/// placements are in CSS pixels.
+fn paint_cell(
+    painter: &Painter,
+    cell: &VisibleTile,
+    source: &VisibleTile,
+    tile: &CanvasTile,
+    zoom: f64,
+    ratio: f64,
+    palette: Palette,
+) -> Result<ImageBitmap, JsValue> {
+    let side = raster::bitmap_side(cell.size, ratio);
+    let Painter {
+        canvas, context, ..
+    } = painter;
+    if canvas.width() != side || canvas.height() != side {
+        canvas.set_width(side);
+        canvas.set_height(side);
+    }
+    context.set_transform(1.0, 0.0, 0.0, 1.0, 0.0, 0.0)?;
+    context.set_fill_style_str(palette.background());
+    context.fill_rect(0.0, 0.0, f64::from(side), f64::from(side));
+    context.set_line_join("round");
+    context.set_line_cap("round");
+    let scale = source.size / UNITS;
+    let bleed = f64::from(BLEED);
+    context.set_transform(
+        ratio * scale,
+        0.0,
+        0.0,
+        ratio * scale,
+        bleed + (source.left - cell.left) * ratio,
+        bleed + (source.top - cell.top) * ratio,
+    )?;
+    for class in Class::ALL {
+        let (area, line) = (palette.area(class), palette.line(class, zoom));
+        for path in tile.paths(class, zoom) {
+            if let Some(color) = area {
+                context.set_fill_style_str(color);
+                context.fill_with_path_2d(path);
+            } else if let Some(line) = line {
+                context.set_stroke_style_str(line.color);
+                context.set_line_width(line.width / scale);
+                context.stroke_with_path(path);
+            }
+        }
+    }
+    canvas.transfer_to_image_bitmap()
+}
+
+/// Copies the bitmap of `cell`, drawn as `drawn` shows, to its place on the screen at `zoom` and
+/// `ratio`. The context has no transform: the positions are in device pixels.
+fn blit(
+    context: &CanvasRenderingContext2d,
+    bitmap: &ImageBitmap,
+    cell: &VisibleTile,
+    drawn: Look,
+    zoom: f64,
+    ratio: f64,
+) -> Result<(), JsValue> {
+    let bleed = f64::from(BLEED);
+    let scale = (zoom - drawn.zoom).exp2() * ratio / drawn.ratio;
+    if (scale - 1.0).abs() <= f64::EPSILON {
+        return context.draw_image_with_image_bitmap(
+            bitmap,
+            (cell.left * ratio).round() - bleed,
+            (cell.top * ratio).round() - bleed,
+        );
+    }
+    let side = f64::from(bitmap.width()) * scale;
+    context.draw_image_with_image_bitmap_and_dw_and_dh(
+        bitmap,
+        cell.left * ratio - bleed * scale,
+        cell.top * ratio - bleed * scale,
+        side,
+        side,
+    )
+}
+
+fn device_rect(cell: &VisibleTile, ratio: f64) -> Rect {
+    Rect {
+        left: (cell.left * ratio).round(),
+        top: (cell.top * ratio).round(),
+        right: ((cell.left + cell.size) * ratio).round(),
+        bottom: ((cell.top + cell.size) * ratio).round(),
+    }
+}
+
+/// The 2D context of `canvas`, without an alpha channel: the map covers the whole canvas, and an
+/// opaque canvas is faster to draw and to show.
+fn opaque_context(canvas: &HtmlCanvasElement) -> Result<CanvasRenderingContext2d, JsValue> {
+    let options = ContextAttributes2d::new();
+    options.set_alpha(false);
+    Ok(canvas
+        .get_context_with_context_options("2d", &options)?
+        .ok_or_else(|| JsError::new("the canvas has no 2D context"))?
+        .dyn_into::<CanvasRenderingContext2d>()?)
 }
 
 fn css_tile(placement: VisibleTile) -> VisibleTile {
@@ -471,15 +756,6 @@ fn css_tile(placement: VisibleTile) -> VisibleTile {
         top: placement.top * CSS_PER_UNIT,
         size: placement.size * CSS_PER_UNIT,
         ..placement
-    }
-}
-
-fn css_rect(rect: Rect) -> Rect {
-    Rect {
-        left: rect.left * CSS_PER_UNIT,
-        top: rect.top * CSS_PER_UNIT,
-        right: rect.right * CSS_PER_UNIT,
-        bottom: rect.bottom * CSS_PER_UNIT,
     }
 }
 

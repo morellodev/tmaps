@@ -353,18 +353,9 @@ fn loaded_ancestor<'a, T>(
     placement: &VisibleTile,
     tile: impl Fn(TileId) -> Option<&'a T>,
 ) -> Option<(VisibleTile, &'a T)> {
-    let id = placement.id;
-    (0..id.z).rev().find_map(|z| {
-        let ancestor = id.ancestor(z)?;
-        let loaded = tile(ancestor)?;
-        let levels = id.z - z;
-        let ancestor_placement = VisibleTile {
-            id: ancestor,
-            left: placement.left - f64::from(id.x - (ancestor.x << levels)) * placement.size,
-            top: placement.top - f64::from(id.y - (ancestor.y << levels)) * placement.size,
-            size: placement.size * f64::from(1_u32 << levels),
-        };
-        Some((ancestor_placement, loaded))
+    (0..placement.id.z).rev().find_map(|z| {
+        let ancestor = placement.ancestor(z)?;
+        Some((ancestor, tile(ancestor.id)?))
     })
 }
 

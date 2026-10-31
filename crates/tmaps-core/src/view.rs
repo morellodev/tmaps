@@ -32,6 +32,22 @@ pub struct VisibleTile {
     pub size: f64,
 }
 
+impl VisibleTile {
+    /// The tile at zoom `z` that contains this tile, at its place on the same screen, or `None`
+    /// if `z` is deeper.
+    #[must_use]
+    pub fn ancestor(&self, z: u8) -> Option<Self> {
+        let id = self.id.ancestor(z)?;
+        let levels = self.id.z - z;
+        Some(Self {
+            id,
+            left: self.left - f64::from(self.id.x - (id.x << levels)) * self.size,
+            top: self.top - f64::from(self.id.y - (id.y << levels)) * self.size,
+            size: self.size * f64::from(1_u32 << levels),
+        })
+    }
+}
+
 impl View {
     #[must_use]
     pub fn new(center: LatLon, zoom: f64) -> Self {
@@ -293,6 +309,24 @@ mod tests {
     fn fitting_one_point_uses_the_max_zoom() {
         let view = View::fitting(&[milan()], 200.0, 100.0).unwrap();
         assert_eq!(view.zoom(), MAX_ZOOM);
+    }
+
+    #[test]
+    fn ancestor_covers_the_tile_on_the_screen() {
+        let tile = VisibleTile {
+            id: TileId { z: 3, x: 5, y: 2 },
+            left: 10.0,
+            top: 20.0,
+            size: 100.0,
+        };
+        let ancestor = tile.ancestor(1).unwrap();
+        assert_eq!(ancestor.id, TileId { z: 1, x: 1, y: 0 });
+        assert_eq!(
+            (ancestor.left, ancestor.top, ancestor.size),
+            (-90.0, -180.0, 400.0)
+        );
+        assert_eq!(tile.ancestor(3), Some(tile));
+        assert_eq!(tile.ancestor(4), None);
     }
 
     #[test]

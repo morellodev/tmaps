@@ -5,6 +5,7 @@ mod cache;
 mod fade;
 mod labels;
 mod paint;
+mod raster;
 mod tile;
 mod web;
 mod wire;
