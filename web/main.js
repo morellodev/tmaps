@@ -43,6 +43,7 @@ let frame = 0;
 function redraw() {
   frame ||= requestAnimationFrame((start) => {
     frame = 0;
+    stepGlide(start);
     addArrivedTiles(start);
     fetchMissingTiles();
     if (map.draw(start)) redraw();
@@ -106,6 +107,50 @@ function describeView() {
   }, 500);
 }
 
+// Key and double-click steps glide to their end, so that the map does not jump. In each
+// GLIDE_HALF_LIFE_MS, the map moves half of the distance that is left.
+const GLIDE_HALF_LIFE_MS = 50;
+const GLIDE_MAX = { pan: 3 * KEY_PAN, zoom: 3 };
+const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
+const glide = { dx: 0, dy: 0, zoom: 0, x: 0, y: 0, time: null };
+
+function glideBy({ dx = 0, dy = 0, zoom = 0, x = 0, y = 0 }) {
+  if (reducedMotion.matches) {
+    map.pan_by(dx, dy);
+    if (zoom) map.zoom_at(zoom, x, y);
+  } else {
+    glide.time ??= performance.now();
+    const limit = (value, max) => Math.min(max, Math.max(-max, value));
+    glide.dx = limit(glide.dx + dx, GLIDE_MAX.pan);
+    glide.dy = limit(glide.dy + dy, GLIDE_MAX.pan);
+    if (zoom) Object.assign(glide, { zoom: limit(glide.zoom + zoom, GLIDE_MAX.zoom), x, y });
+  }
+  redraw();
+}
+
+function stopGlide() {
+  Object.assign(glide, { dx: 0, dy: 0, zoom: 0, time: null });
+}
+
+function stepGlide(now) {
+  if (!glide.dx && !glide.dy && !glide.zoom) {
+    glide.time = null;
+    return;
+  }
+  // A frame can start before the key press, so its time can be earlier.
+  const part = 1 - 0.5 ** (Math.max(0, now - glide.time) / GLIDE_HALF_LIFE_MS);
+  glide.time = Math.max(now, glide.time);
+  const take = (key, last) => {
+    const step = Math.abs(glide[key]) < last ? glide[key] : glide[key] * part;
+    glide[key] -= step;
+    return step;
+  };
+  map.pan_by(take("dx", 0.5), take("dy", 0.5));
+  const zoom = take("zoom", 0.002);
+  if (zoom) map.zoom_at(zoom, glide.x, glide.y);
+  redraw();
+}
+
 let pointer = null;
 canvas.addEventListener("pointerdown", (event) => {
   if (!event.isPrimary || event.button !== 0) return;
@@ -113,7 +158,8 @@ canvas.addEventListener("pointerdown", (event) => {
   canvas.setPointerCapture(event.pointerId);
 });
 canvas.addEventListener("pointermove", (event) => {
-  if (event.pointerId !== pointer?.id) return;
+  if (event.pointerId !== pointer?.id || (event.clientX === pointer.x && event.clientY === pointer.y)) return;
+  stopGlide();
   map.pan_by(pointer.x - event.clientX, pointer.y - event.clientY);
   pointer = { id: event.pointerId, x: event.clientX, y: event.clientY };
   redraw();
@@ -128,6 +174,7 @@ canvas.addEventListener(
   "wheel",
   (event) => {
     event.preventDefault();
+    stopGlide();
     const unit = { [WheelEvent.DOM_DELTA_LINE]: 16, [WheelEvent.DOM_DELTA_PAGE]: canvas.clientHeight };
     // Trackpad pinches come as wheel events with ctrlKey and small deltas.
     const speed = event.ctrlKey ? 0.01 : 0.002;
@@ -138,26 +185,24 @@ canvas.addEventListener(
 );
 
 canvas.addEventListener("dblclick", (event) => {
-  map.zoom_at(event.shiftKey ? -1 : 1, event.offsetX, event.offsetY);
-  redraw();
+  glideBy({ zoom: event.shiftKey ? -1 : 1, x: event.offsetX, y: event.offsetY });
 });
 
 canvas.addEventListener("keydown", (event) => {
-  const center = [canvas.clientWidth / 2, canvas.clientHeight / 2];
-  const actions = {
-    ArrowLeft: () => map.pan_by(-KEY_PAN, 0),
-    ArrowRight: () => map.pan_by(KEY_PAN, 0),
-    ArrowUp: () => map.pan_by(0, -KEY_PAN),
-    ArrowDown: () => map.pan_by(0, KEY_PAN),
-    "+": () => map.zoom_at(KEY_ZOOM, ...center),
-    "=": () => map.zoom_at(KEY_ZOOM, ...center),
-    "-": () => map.zoom_at(-KEY_ZOOM, ...center),
+  const center = { x: canvas.clientWidth / 2, y: canvas.clientHeight / 2 };
+  const steps = {
+    ArrowLeft: { dx: -KEY_PAN },
+    ArrowRight: { dx: KEY_PAN },
+    ArrowUp: { dy: -KEY_PAN },
+    ArrowDown: { dy: KEY_PAN },
+    "+": { zoom: KEY_ZOOM, ...center },
+    "=": { zoom: KEY_ZOOM, ...center },
+    "-": { zoom: -KEY_ZOOM, ...center },
   };
-  const action = actions[event.key];
-  if (!action || event.metaKey || event.ctrlKey || event.altKey) return;
+  const step = steps[event.key];
+  if (!step || event.metaKey || event.ctrlKey || event.altKey) return;
   event.preventDefault();
-  action();
-  redraw();
+  glideBy(step);
 });
 
 new ResizeObserver(redraw).observe(canvas);
