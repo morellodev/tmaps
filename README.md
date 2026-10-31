@@ -105,6 +105,14 @@ docker run --rm -v "$PWD":/src:ro -w /src -e CARGO_TARGET_DIR=/tmp/target -e CI=
 docker run --rm -v "$PWD":/src:ro -w /src -e CARGO_TARGET_DIR=/tmp/target rust:<rust-version>-slim sh -c "rustup target add wasm32-unknown-unknown && cargo check -p tmaps-core -p tmaps-braille --target wasm32-unknown-unknown --locked"
 ```
 
+`tmaps-canvas` draws the map on an HTML canvas. To build the demo page in `web/`, run this command. The `wasm-bindgen-cli` version must be the same as the `wasm-bindgen` version in `Cargo.lock`.
+
+```sh
+mkdir -p web/pkg && docker run --rm -v "$PWD":/src:ro -v "$PWD/web/pkg":/out -w /src -e CARGO_TARGET_DIR=/tmp/target rust:<rust-version>-slim sh -c "rustup target add wasm32-unknown-unknown && cargo install wasm-bindgen-cli --version <wasm-bindgen-version> --locked && cargo build -p tmaps-canvas --target wasm32-unknown-unknown --release --locked && wasm-bindgen --target web --out-dir /out /tmp/target/wasm32-unknown-unknown/release/tmaps_canvas.wasm && chown -R $(id -u):$(id -g) /out"
+```
+
+Then serve `web/` with a local server, for example `python3 -m http.server -d web`, and open `http://localhost:8000`.
+
 ## License
 
 [MIT](LICENSE)

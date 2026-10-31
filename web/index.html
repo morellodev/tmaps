@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light dark">
+    <title>tmaps on the web</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --page: light-dark(#ece7df, #1b1d22);
+        --ink: light-dark(#3a3a3a, #d6d6d6);
+        --panel: light-dark(rgb(255 255 255 / 0.85), rgb(27 29 34 / 0.85));
+        --focus: light-dark(#2f6fde, #5b9bff);
+      }
+
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+
+      body {
+        display: grid;
+        grid-template-rows: 1fr auto;
+        background: var(--page);
+        color: var(--ink);
+        font: 13px/1.4 system-ui, sans-serif;
+        overscroll-behavior: none;
+      }
+
+      #map {
+        display: block;
+        inline-size: 100%;
+        block-size: 100%;
+        min-block-size: 0;
+        touch-action: none;
+        cursor: grab;
+      }
+
+      #map:active {
+        cursor: grabbing;
+      }
+
+      #map:focus-visible {
+        outline: 3px solid var(--focus);
+        outline-offset: -3px;
+      }
+
+      footer {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: space-between;
+        gap: 0.25rem 1rem;
+        padding: 0.25rem 0.5rem;
+        background: var(--panel);
+      }
+
+      footer a {
+        color: inherit;
+      }
+    </style>
+    <script type="module" src="main.js"></script>
+  </head>
+  <body>
+    <canvas id="map" tabindex="0" role="application" aria-roledescription="map"
+      aria-label="Map. Drag or use the arrow keys to move. Scroll or use the plus and minus keys to zoom."
+      aria-describedby="status"></canvas>
+    <footer>
+      <output id="status">Loading the map…</output>
+      <small><a id="attribution" href="https://www.openstreetmap.org/copyright"></a></small>
+    </footer>
+  </body>
+</html>
