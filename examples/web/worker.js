@@ -28,9 +28,7 @@ const handlers = {
     const controller = new AbortController();
     fetches.set(job, controller);
     try {
-      const response = await fetch(url, { signal: controller.signal });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const bytes = new Uint8Array(await response.arrayBuffer());
+      const bytes = await tileBytes(await fetch(url, { signal: controller.signal }));
       await ready.promise;
       controller.signal.throwIfAborted();
       const [labels, paths] = prepare_tile(bytes, lang);
@@ -46,6 +44,17 @@ const handlers = {
     fetches.get(job)?.abort();
   },
 };
+
+// Tile servers send 404 or 204 for a tile with no data, and some send gzip without a
+// Content-Encoding header, so the browser does not unzip it.
+async function tileBytes(response) {
+  if (response.status === 404) return new Uint8Array();
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  if (bytes[0] !== 0x1f || bytes[1] !== 0x8b) return bytes;
+  const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("gzip"));
+  return new Uint8Array(await new Response(stream).arrayBuffer());
+}
 
 function describe(error) {
   return String(error?.message ?? error);
