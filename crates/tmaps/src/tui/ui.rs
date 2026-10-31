@@ -20,11 +20,11 @@ use tmaps_core::routing::{Maneuver, Mode, Route, Step};
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
 
-use crate::app::{App, Level};
-use crate::palette::Palette;
-use crate::prompt::{Input, Prompt};
-use crate::regions::{ListRegion, Regions};
-use crate::trip::{Routes, Trip, Waypoint};
+use crate::tui::app::{App, Level};
+use crate::tui::palette::Palette;
+use crate::tui::prompt::{Input, Prompt};
+use crate::tui::regions::{ListRegion, Regions};
+use crate::tui::trip::{Routes, Trip, Waypoint};
 
 const STATUS_HEIGHT: u16 = 1;
 const PANEL_MIN_WIDTH: u16 = 40;
@@ -1357,10 +1357,10 @@ mod tests {
 
     use tmaps_core::geocode::Place;
 
-    use crate::message::{Message, SourceInfo};
-    use crate::palette::{Depth, Shade};
-    use crate::services::Request;
-    use crate::trip::sample_route;
+    use crate::tui::message::{Message, SourceInfo};
+    use crate::tui::palette::{Depth, Shade};
+    use crate::tui::services::Request;
+    use crate::tui::trip::sample_route;
 
     fn status_line(width: u16, app: &App) -> String {
         let palette = Palette::new(Depth::Mono, Shade::Dark);

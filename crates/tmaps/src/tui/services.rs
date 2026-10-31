@@ -14,7 +14,7 @@ use tmaps_core::{Error, LatLon};
 use tokio::sync::mpsc;
 use tokio::task::AbortHandle;
 
-use crate::message::{Message, Server, describe, no_route};
+use crate::tui::message::{Message, Server, describe, no_route};
 
 const ALTERNATIVES: u8 = 2;
 /// A held key (`x`, `1`) asks for many routes. The router serves one request each second, so

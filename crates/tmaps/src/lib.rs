@@ -6,6 +6,7 @@ mod location;
 mod output;
 mod text;
 mod time;
+mod tui;
 
 use std::ffi::OsString;
 use std::io::{self, IsTerminal, Write};
@@ -133,7 +134,7 @@ async fn execute(cli: Cli, format: Format) -> Result<(), CliError> {
     }
     let config = Config::load(&config_path)?;
     let Some(command) = cli.command else {
-        return Ok(tmaps_tui::run(&config, &config_path, &Paths::detect()?).await?);
+        return Ok(crate::tui::run(&config, &config_path, &Paths::detect()?).await?);
     };
     let client = http::client()?;
     let context = Context {

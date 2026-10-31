@@ -3,8 +3,8 @@ use std::mem;
 use tmaps_core::LatLon;
 use tmaps_core::routing::{Mode, Route};
 
-use crate::message::no_route;
-use crate::services::Request;
+use crate::tui::message::no_route;
+use crate::tui::services::Request;
 
 /// The start and end points, the travel mode, and the routes between the points.
 #[derive(Debug, Default)]
