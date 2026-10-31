@@ -1,10 +1,10 @@
 use std::collections::HashMap;
 
 use tmaps_core::label::LabelClass;
-use tmaps_core::scene::{Rect, Scene, SceneTile, ScreenPoint, Shape};
+use tmaps_core::scene::{Rect, Scene, ScreenPoint};
 use tmaps_core::style::Class;
 use tmaps_core::tiles::{TileId, TileSet};
-use tmaps_core::view::View;
+use tmaps_core::view::{View, VisibleTile};
 use tmaps_core::{ATTRIBUTION, LatLon, PreparedTile};
 use wasm_bindgen::prelude::*;
 use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement, Path2d};
@@ -12,6 +12,7 @@ use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement, Path2d};
 use crate::cache::TileCache;
 use crate::labels;
 use crate::paint::{Line, Palette};
+use crate::tile::{CanvasTile, UNITS};
 
 /// A map on an HTML canvas. JavaScript fetches the `TileJSON` document and the tiles, and gives
 /// them to the map: the map does no I/O. All positions are in CSS pixels.
@@ -22,7 +23,7 @@ pub struct WebMap {
     lang: String,
     tile_set: Option<TileSet>,
     view: View,
-    tiles: TileCache,
+    tiles: TileCache<CanvasTile>,
     route: Vec<LatLon>,
     dark: bool,
     widths: HashMap<LabelClass, HashMap<String, f64>>,
@@ -162,7 +163,7 @@ impl WebMap {
     /// If `bytes` is not a valid vector tile.
     pub fn add_tile(&mut self, z: u8, x: u32, y: u32, bytes: &[u8]) -> Result<(), JsValue> {
         let tile = PreparedTile::decode(bytes, &self.lang).map_err(js)?;
-        self.tiles.add(TileId { z, x, y }, tile);
+        self.tiles.add(TileId { z, x, y }, CanvasTile::new(tile)?);
         Ok(())
     }
 
@@ -237,47 +238,45 @@ impl WebMap {
     }
 }
 
-/// Fills or strokes the shapes of `class`, one path for each tile. Areas use the nonzero rule:
-/// MVT 2.1 (4.3.4.4) winds holes against their exterior rings, so holes stay empty, and
-/// overlapping features of one path stay filled.
+/// Fills or strokes the paths of `class`, with one transform for each tile.
 fn draw_class(
     context: &CanvasRenderingContext2d,
-    scene: &Scene<'_, PreparedTile>,
+    scene: &Scene<'_, CanvasTile>,
     class: Class,
     palette: Palette,
 ) -> Result<(), JsValue> {
-    let mut shapes = scene.shapes(class).peekable();
-    while let Some((scene_tile, shape)) = shapes.next() {
-        let path = Path2d::new()?;
-        add_shape(&path, scene_tile, shape, class);
-        while let Some((_, shape)) = shapes.next_if(|(next, _)| std::ptr::eq(*next, scene_tile)) {
-            add_shape(&path, scene_tile, shape, class);
+    let zoom = scene.view().zoom();
+    let (area, line) = (palette.area(class), palette.line(class, zoom));
+    for scene_tile in scene.tiles() {
+        let mut paths = scene_tile.tile.paths(class, zoom).peekable();
+        if paths.peek().is_none() {
+            continue;
         }
         context.save();
         clip_to(context, scene_tile.clip);
-        if let Some(color) = palette.area(class) {
-            context.set_fill_style_str(color);
-            context.fill_with_path_2d(&path);
-        } else if let Some(line) = palette.line(class, scene.view().zoom()) {
-            stroke(context, &path, line);
+        let VisibleTile {
+            left, top, size, ..
+        } = scene_tile.placement;
+        let scale = size / UNITS;
+        context.transform(scale, 0.0, 0.0, scale, left, top)?;
+        for path in paths {
+            if let Some(color) = area {
+                context.set_fill_style_str(color);
+                context.fill_with_path_2d(path);
+            } else if let Some(line) = line {
+                stroke(
+                    context,
+                    path,
+                    Line {
+                        width: line.width / scale,
+                        ..line
+                    },
+                );
+            }
         }
         context.restore();
     }
     Ok(())
-}
-
-fn add_shape(path: &Path2d, scene_tile: &SceneTile<'_, PreparedTile>, shape: &Shape, class: Class) {
-    for part in scene_tile.parts(shape) {
-        add_line(
-            path,
-            part.points()
-                .iter()
-                .map(|&point| scene_tile.to_screen(point)),
-        );
-        if class.is_area() {
-            path.close_path();
-        }
-    }
 }
 
 fn add_line(path: &Path2d, points: impl IntoIterator<Item = ScreenPoint>) {

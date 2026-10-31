@@ -1,6 +1,5 @@
 use std::collections::{HashMap, HashSet};
 
-use tmaps_core::PreparedTile;
 use tmaps_core::tiles::TileId;
 
 const MAX_TILES: usize = 256;
@@ -9,16 +8,26 @@ const MAX_TILES: usize = 256;
 /// the map used least recently goes first. The tiles of the current frame always stay, so the
 /// cache grows past its limit when more tiles are visible. A tile that fails stays requested, so
 /// that the page does not ask for it in a loop.
-#[derive(Debug, Default)]
-pub struct TileCache {
-    tiles: HashMap<TileId, (PreparedTile, u64)>,
+#[derive(Debug)]
+pub struct TileCache<T> {
+    tiles: HashMap<TileId, (T, u64)>,
     requested: HashSet<TileId>,
     frame: u64,
 }
 
-impl TileCache {
+impl<T> Default for TileCache<T> {
+    fn default() -> Self {
+        Self {
+            tiles: HashMap::new(),
+            requested: HashSet::new(),
+            frame: 0,
+        }
+    }
+}
+
+impl<T> TileCache<T> {
     #[must_use]
-    pub fn get(&self, id: TileId) -> Option<&PreparedTile> {
+    pub fn get(&self, id: TileId) -> Option<&T> {
         self.tiles.get(&id).map(|(tile, _)| tile)
     }
 
@@ -32,7 +41,7 @@ impl TileCache {
             if !self.tiles.contains_key(&id) && self.requested.insert(id) {
                 missing.push(id);
             }
-            for used in ancestry(id) {
+            for used in (0..=id.z).filter_map(|z| id.ancestor(z)) {
                 if let Some((_, frame)) = self.tiles.get_mut(&used) {
                     *frame = self.frame;
                 }
@@ -41,7 +50,7 @@ impl TileCache {
         missing
     }
 
-    pub fn add(&mut self, id: TileId, tile: PreparedTile) {
+    pub fn add(&mut self, id: TileId, tile: T) {
         self.tiles.insert(id, (tile, self.frame));
         while self.tiles.len() > MAX_TILES {
             let oldest = self
@@ -59,18 +68,6 @@ impl TileCache {
     }
 }
 
-/// The tile and each tile that contains it, up to zoom 0.
-fn ancestry(id: TileId) -> impl Iterator<Item = TileId> {
-    (0..=id.z).rev().map(move |z| {
-        let shift = id.z - z;
-        TileId {
-            z,
-            x: id.x >> shift,
-            y: id.y >> shift,
-        }
-    })
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -79,27 +76,27 @@ mod tests {
         TileId { z: 14, x, y: 0 }
     }
 
-    fn full_cache() -> (TileCache, Vec<TileId>) {
-        let mut cache = TileCache::default();
+    fn full_cache() -> (TileCache<()>, Vec<TileId>) {
+        let mut cache = TileCache::<()>::default();
         let ids: Vec<TileId> = (0..u32::try_from(MAX_TILES).unwrap()).map(id).collect();
         cache.request(ids.iter().copied());
         for &tile in &ids {
-            cache.add(tile, PreparedTile::default());
+            cache.add(tile, ());
         }
         (cache, ids)
     }
 
     #[test]
     fn requested_tile_is_not_requested_again() {
-        let mut cache = TileCache::default();
+        let mut cache = TileCache::<()>::default();
         assert_eq!(cache.request([id(1), id(2)]), [id(1), id(2)]);
         assert_eq!(cache.request([id(1), id(3)]), [id(3)]);
     }
 
     #[test]
     fn loaded_tile_is_not_requested() {
-        let mut cache = TileCache::default();
-        cache.add(id(1), PreparedTile::default());
+        let mut cache = TileCache::<()>::default();
+        cache.add(id(1), ());
         assert_eq!(cache.request([id(1)]), []);
     }
 
@@ -108,7 +105,7 @@ mod tests {
         let (mut cache, ids) = full_cache();
         cache.request(ids[..1].iter().copied());
         cache.request([id(1000)]);
-        cache.add(id(1000), PreparedTile::default());
+        cache.add(id(1000), ());
         assert!(cache.get(id(0)).is_some());
         let dropped: Vec<TileId> = ids[1..]
             .iter()
@@ -124,7 +121,7 @@ mod tests {
         let (mut cache, mut ids) = full_cache();
         ids.push(id(1000));
         cache.request(ids.iter().copied());
-        cache.add(id(1000), PreparedTile::default());
+        cache.add(id(1000), ());
         assert!(ids.iter().all(|&tile| cache.get(tile).is_some()));
         assert_eq!(cache.request(ids.iter().copied()), []);
     }
@@ -133,22 +130,9 @@ mod tests {
     fn full_cache_keeps_the_ancestor_of_a_visible_tile() {
         let (mut cache, _) = full_cache();
         let parent = TileId { z: 13, x: 0, y: 0 };
-        cache.add(parent, PreparedTile::default());
+        cache.add(parent, ());
         cache.request([TileId { z: 14, x: 1, y: 1 }]);
-        cache.add(id(1000), PreparedTile::default());
+        cache.add(id(1000), ());
         assert!(cache.get(parent).is_some());
-    }
-
-    #[test]
-    fn ancestry_goes_up_to_zoom_0() {
-        let ids: Vec<TileId> = ancestry(TileId { z: 2, x: 3, y: 1 }).collect();
-        assert_eq!(
-            ids,
-            [
-                TileId { z: 2, x: 3, y: 1 },
-                TileId { z: 1, x: 1, y: 0 },
-                TileId { z: 0, x: 0, y: 0 },
-            ]
-        );
     }
 }

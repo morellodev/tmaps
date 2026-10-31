@@ -4,6 +4,7 @@
 mod cache;
 mod labels;
 mod paint;
+mod tile;
 mod web;
 
 pub use web::WebMap;

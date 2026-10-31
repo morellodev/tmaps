@@ -28,6 +28,20 @@ pub struct Part {
     corners: [[f32; 2]; 2],
 }
 
+impl Shape {
+    /// The lowest zoom that shows the shape.
+    #[must_use]
+    pub fn min_zoom(&self) -> f64 {
+        self.min_zoom
+    }
+
+    /// All parts of the shape. [`SceneTile::parts`] gives only the parts that can draw.
+    #[must_use]
+    pub fn parts(&self) -> &[Part] {
+        &self.parts
+    }
+}
+
 impl Part {
     pub(crate) fn new(points: Vec<[f32; 2]>) -> Self {
         let corners = points.iter().fold(
@@ -158,6 +172,19 @@ impl PreparedTile {
             }
         }
         prepared
+    }
+
+    /// The shapes of `class` at each zoom. [`Scene::shapes`] gives only the shapes that the zoom
+    /// shows.
+    #[must_use]
+    pub fn shapes(&self, class: Class) -> &[Shape] {
+        &self.shapes[class.index()]
+    }
+
+    /// Frees the shapes and keeps the labels, for a renderer that keeps its own copy of the
+    /// geometry, such as canvas paths.
+    pub fn clear_shapes(&mut self) {
+        self.shapes = Default::default();
     }
 
     #[must_use]
@@ -488,6 +515,43 @@ mod tests {
             .map(|(_, _, candidate)| candidate.text.as_str())
             .collect();
         assert_eq!(texts, ["Milano", "Bergamo", "Pavia", "Monza"]);
+    }
+
+    #[test]
+    fn cleared_tile_keeps_its_labels() {
+        let water = mvt::Layer::with_features(
+            "water",
+            4096,
+            vec![(
+                Geometry::Polygons(vec![vec![
+                    mvt::Point { x: 0, y: 0 },
+                    mvt::Point { x: 10, y: 0 },
+                    mvt::Point { x: 10, y: 10 },
+                ]]),
+                vec![],
+            )],
+        );
+        let place = mvt::Layer::with_features(
+            "place",
+            4096,
+            vec![(
+                Geometry::Points(vec![mvt::Point { x: 0, y: 0 }]),
+                vec![
+                    ("class", mvt::Value::String("city".to_owned())),
+                    ("name", mvt::Value::String("Milano".to_owned())),
+                ],
+            )],
+        );
+        let mut tile = PreparedTile::new(
+            &mvt::Tile {
+                layers: vec![water, place],
+            },
+            "it",
+        );
+        assert_eq!(tile.shapes(Class::Water).len(), 1);
+        tile.clear_shapes();
+        assert_eq!(tile.shapes(Class::Water), []);
+        assert_eq!(tile.labels().len(), 1);
     }
 
     #[test]
