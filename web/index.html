@@ -9,8 +9,9 @@
       :root {
         color-scheme: light dark;
         --page: light-dark(#ece7df, #1b1d22);
-        --ink: light-dark(#3a3a3a, #d6d6d6);
-        --panel: light-dark(rgb(255 255 255 / 0.85), rgb(27 29 34 / 0.85));
+        --ink: light-dark(rgb(0 0 0 / 0.75), rgb(255 255 255 / 0.8));
+        --panel: light-dark(rgb(255 255 255 / 0.5), rgb(0 0 0 / 0.5));
+        --error: light-dark(rgb(255 255 255 / 0.9), rgb(27 29 34 / 0.9));
         --focus: light-dark(#2f6fde, #5b9bff);
       }
 
@@ -22,11 +23,14 @@
 
       body {
         display: grid;
-        grid-template-rows: 1fr auto;
         background: var(--page);
         color: var(--ink);
-        font: 13px/1.4 system-ui, sans-serif;
+        font: 12px/20px system-ui, sans-serif;
         overscroll-behavior: none;
+      }
+
+      body > * {
+        grid-area: 1 / 1;
       }
 
       #map {
@@ -47,17 +51,37 @@
         outline-offset: -3px;
       }
 
-      footer {
-        display: flex;
-        flex-wrap: wrap;
-        justify-content: space-between;
-        gap: 0.25rem 1rem;
-        padding: 0.25rem 0.5rem;
+      .attribution {
+        align-self: end;
+        justify-self: end;
+        max-inline-size: calc(100% - 10px);
+        padding: 0 5px;
         background: var(--panel);
+        text-align: end;
       }
 
-      footer a {
+      .attribution a {
         color: inherit;
+      }
+
+      #status.error {
+        align-self: start;
+        justify-self: start;
+        margin: 10px;
+        padding: 5px 10px;
+        background: var(--error);
+      }
+
+      .visually-hidden:where(:not(:focus-within, :active)) {
+        position: absolute !important;
+        clip-path: inset(50%) !important;
+        overflow: hidden !important;
+        width: 1px !important;
+        height: 1px !important;
+        margin: -1px !important;
+        padding: 0 !important;
+        border: 0 !important;
+        white-space: nowrap !important;
       }
     </style>
     <script type="module" src="main.js"></script>
@@ -66,9 +90,7 @@
     <canvas id="map" tabindex="0" role="application" aria-roledescription="map"
       aria-label="Map. Drag or use the arrow keys to move. Scroll or use the plus and minus keys to zoom."
       aria-describedby="status"></canvas>
-    <footer>
-      <output id="status">Loading the map…</output>
-      <small><a id="attribution" href="https://www.openstreetmap.org/copyright"></a></small>
-    </footer>
+    <output id="status" class="visually-hidden">Loading the map…</output>
+    <small id="attribution" class="attribution"></small>
   </body>
 </html>

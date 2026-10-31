@@ -1,6 +1,7 @@
 import init, { WebMap } from "./pkg/tmaps_canvas.js";
 
 const TILEJSON = "https://tiles.openfreemap.org/planet";
+const OSM_COPYRIGHT = "https://www.openstreetmap.org/copyright";
 const START = { lat: 45.46, lon: 9.19, zoom: 12 };
 const KEY_PAN = 100;
 const KEY_ZOOM = 0.5;
@@ -9,8 +10,20 @@ const canvas = document.querySelector("#map");
 const status = document.querySelector("#status");
 const attribution = document.querySelector("#attribution");
 
-await init();
-const map = new WebMap(canvas, navigator.language);
+function showError(message) {
+  status.value = message;
+  status.classList.replace("visually-hidden", "error");
+}
+
+let map;
+try {
+  await init();
+  map = new WebMap(canvas, navigator.language);
+} catch (error) {
+  showError(`The map cannot start: ${error.message}`);
+  throw error;
+}
+
 try {
   const [zoom, lat, lon] = location.hash.slice(1).split("/").map(Number);
   if (!Number.isFinite(zoom)) throw new Error("no zoom in the URL");
@@ -77,6 +90,7 @@ let settle = 0;
 function describeView() {
   clearTimeout(settle);
   settle = setTimeout(() => {
+    if (status.classList.contains("error")) return;
     const [lat, lon, zoom] = [map.lat().toFixed(4), map.lon().toFixed(4), map.zoom().toFixed(1)];
     status.value = `${lat}, ${lon} · zoom ${zoom}`;
     history.replaceState(null, "", `#${zoom}/${lat}/${lon}`);
@@ -152,13 +166,57 @@ function watchPixelRatio() {
 }
 watchPixelRatio();
 
+// The TileJSON attribution is HTML from the network: copy only its text and its web links.
+function showAttribution(html) {
+  const parts = copyCredits(new DOMParser().parseFromString(html, "text/html").body);
+  const namesOsm = parts.some((part) =>
+    typeof part === "string"
+      ? part.includes("OpenStreetMap")
+      : part.textContent.includes("OpenStreetMap") || `.${part.hostname}`.endsWith(".openstreetmap.org"),
+  );
+  if (!namesOsm) parts.push(parts.length ? " " : "", link(OSM_COPYRIGHT, "© OpenStreetMap contributors"));
+  attribution.replaceChildren(...parts);
+}
+
+const HIDDEN_TEXT = new Set(["STYLE", "SCRIPT", "TEMPLATE", "TEXTAREA", "NOSCRIPT"]);
+function copyCredits(parent) {
+  return [...parent.childNodes].flatMap((node) => {
+    if (node.nodeType === Node.TEXT_NODE) return [node.data];
+    if (node.nodeType !== Node.ELEMENT_NODE || HIDDEN_TEXT.has(node.tagName)) return [];
+    if (node.tagName !== "A") return copyCredits(node);
+    const href = webUrl(node.getAttribute("href"));
+    return [href ? link(href, node.textContent) : node.textContent];
+  });
+}
+
+// Relative links in the credit point to the tile server, not to this page.
+function webUrl(href) {
+  if (href === null) return null;
+  try {
+    const url = new URL(href, TILEJSON);
+    return ["https:", "http:"].includes(url.protocol) ? url.href : null;
+  } catch {
+    return null;
+  }
+}
+
+function link(href, text) {
+  const anchor = document.createElement("a");
+  anchor.href = href;
+  anchor.target = "_blank";
+  anchor.textContent = text;
+  return anchor;
+}
+
 try {
   const response = await fetch(TILEJSON);
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
-  map.set_tile_set(await response.text());
-  attribution.textContent = map.attribution();
+  const tileJson = await response.text();
+  map.set_tile_set(tileJson);
+  showAttribution(JSON.parse(tileJson).attribution ?? "");
   redraw();
 } catch (error) {
-  status.value = `The map server is not available: ${error.message}`;
+  showError(`The map server is not available: ${error.message}`);
+  showAttribution("");
   map.draw();
 }

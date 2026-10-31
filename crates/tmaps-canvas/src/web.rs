@@ -5,7 +5,7 @@ use tmaps_core::scene::{Rect, Scene, ScreenPoint};
 use tmaps_core::style::Class;
 use tmaps_core::tiles::{TileId, TileSet};
 use tmaps_core::view::{View, VisibleTile};
-use tmaps_core::{ATTRIBUTION, LatLon, PreparedTile};
+use tmaps_core::{LatLon, PreparedTile};
 use wasm_bindgen::prelude::*;
 use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement, Path2d};
 
@@ -66,16 +66,6 @@ impl WebMap {
     pub fn set_tile_set(&mut self, tilejson: &str) -> Result<(), JsValue> {
         self.tile_set = Some(TileSet::from_json(tilejson.as_bytes()).map_err(js)?);
         Ok(())
-    }
-
-    /// The credit line to show with the map, in plain text.
-    #[must_use]
-    pub fn attribution(&self) -> String {
-        credit(
-            self.tile_set
-                .as_ref()
-                .map_or("", |tile_set| &tile_set.attribution),
-        )
     }
 
     /// # Errors
@@ -360,17 +350,6 @@ fn measure(
     Some(width)
 }
 
-/// The credit of the tiles, with the OpenStreetMap credit when the tiles do not give it.
-fn credit(tiles: &str) -> String {
-    if tiles.is_empty() {
-        ATTRIBUTION.to_owned()
-    } else if tiles.contains("OpenStreetMap") {
-        tiles.to_owned()
-    } else {
-        format!("{tiles} · {ATTRIBUTION}")
-    }
-}
-
 fn device_pixels(css: f64) -> u32 {
     #[expect(
         clippy::cast_possible_truncation,
@@ -383,19 +362,4 @@ fn device_pixels(css: f64) -> u32 {
 
 fn js(error: tmaps_core::Error) -> JsValue {
     JsError::from(error).into()
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn credit_names_openstreetmap_once() {
-        assert_eq!(credit(""), ATTRIBUTION);
-        assert_eq!(
-            credit("OpenFreeMap © OpenMapTiles Data from OpenStreetMap"),
-            "OpenFreeMap © OpenMapTiles Data from OpenStreetMap"
-        );
-        assert_eq!(credit("Tiles by X"), format!("Tiles by X · {ATTRIBUTION}"));
-    }
 }
