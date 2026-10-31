@@ -29,6 +29,10 @@ const CSS_PER_UNIT: f64 = 2.0;
 /// placement takes milliseconds. Between placements, the labels move with the map.
 const PLACE_MS: f64 = 100.0;
 
+/// The most label widths that the map keeps for each label class. When a class has more, the map
+/// removes them and measures each text again.
+const MAX_WIDTHS: usize = 16_384;
+
 /// The longest time that one frame draws cell bitmaps, in milliseconds. A frame starts a cell only
 /// if the mean time of a cell fits. While the zoom moves, a cell that does not fit waits, and a
 /// scaled bitmap shows in its place. One cell can take longer than a frame.
@@ -805,6 +809,9 @@ fn measure(
     let widths = widths.entry(class).or_default();
     if let Some(&width) = widths.get(text) {
         return Some(width);
+    }
+    if widths.len() >= MAX_WIDTHS {
+        widths.clear();
     }
     context.set_font(palette.text(class).font);
     let width = context.measure_text(text).ok()?.width();
