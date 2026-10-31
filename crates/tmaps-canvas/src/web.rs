@@ -14,6 +14,10 @@ use crate::labels;
 use crate::paint::{Line, Palette};
 use crate::tile::{CanvasTile, UNITS};
 
+// Tiles show at 512 px, the size that OpenMapTiles styles and MapLibre use, so a zoom level
+// means the same scale as in MapLibre.
+const CSS_PER_UNIT: f64 = 2.0;
+
 /// A map on an HTML canvas. JavaScript fetches the `TileJSON` document and the tiles, and gives
 /// them to the map: the map does no I/O. All positions are in CSS pixels.
 #[wasm_bindgen]
@@ -99,13 +103,14 @@ impl WebMap {
 
     /// Moves the view. Positive values move it east and south, so the map moves west and north.
     pub fn pan_by(&mut self, dx: f64, dy: f64) {
-        self.view = self.view.pan(dx, dy);
+        self.view = self.view.pan(dx / CSS_PER_UNIT, dy / CSS_PER_UNIT);
     }
 
     /// Zooms by `delta` levels and keeps the point at `(x, y)` in its place, for example the
     /// point under the pointer.
     pub fn zoom_at(&mut self, delta: f64, x: f64, y: f64) {
-        let (width, height) = self.size();
+        let (width, height) = self.units();
+        let (x, y) = (x / CSS_PER_UNIT, y / CSS_PER_UNIT);
         let point = self.view.point_at(x, y, width, height);
         let zoomed = self.view.zoom_by(delta);
         let (moved_x, moved_y) = zoomed.screen_position(point, width, height);
@@ -142,7 +147,7 @@ impl WebMap {
         let Some(tile_set) = &self.tile_set else {
             return Vec::new();
         };
-        let (width, height) = self.size();
+        let (width, height) = self.units();
         let visible = self.view.visible_tiles(width, height, tile_set.max_zoom);
         self.tiles
             .request(visible.into_iter().map(|tile| tile.id))
@@ -189,7 +194,8 @@ impl WebMap {
             return Ok(());
         };
         let tiles = &self.tiles;
-        let scene = Scene::new(self.view, width, height, tile_set.max_zoom, |id| {
+        let (units_x, units_y) = self.units();
+        let scene = Scene::new(self.view, units_x, units_y, tile_set.max_zoom, |id| {
             tiles.get(id)
         });
         context.set_line_join("round");
@@ -199,7 +205,13 @@ impl WebMap {
         }
         if self.route.len() > 1 {
             let path = Path2d::new()?;
-            add_line(&path, scene.line_on_screen(&self.route));
+            let points = scene.line_on_screen(&self.route);
+            add_line(
+                &path,
+                points
+                    .into_iter()
+                    .map(|(x, y)| (x * CSS_PER_UNIT, y * CSS_PER_UNIT)),
+            );
             stroke(context, &path, palette.route_line(true));
         }
         let widths = &mut self.widths;
@@ -207,8 +219,8 @@ impl WebMap {
             scene
                 .labels()
                 .into_iter()
-                .map(|(scene_tile, _, candidate)| (scene_tile.placement, candidate)),
-            scene.screen(),
+                .map(|(scene_tile, _, candidate)| (css_tile(scene_tile.placement), candidate)),
+            Rect::screen(width, height),
             |text, class| {
                 let width = measure(context, widths, palette, text, class)?;
                 Some((width, f64::from(palette.text(class).size)))
@@ -236,6 +248,11 @@ impl WebMap {
             f64::from(self.canvas.client_height()),
         )
     }
+
+    fn units(&self) -> (f64, f64) {
+        let (width, height) = self.size();
+        (width / CSS_PER_UNIT, height / CSS_PER_UNIT)
+    }
 }
 
 /// Fills or strokes the paths of `class`, with one transform for each tile.
@@ -253,10 +270,10 @@ fn draw_class(
             continue;
         }
         context.save();
-        clip_to(context, scene_tile.clip);
+        clip_to(context, css_rect(scene_tile.clip));
         let VisibleTile {
             left, top, size, ..
-        } = scene_tile.placement;
+        } = css_tile(scene_tile.placement);
         let scale = size / UNITS;
         context.transform(scale, 0.0, 0.0, scale, left, top)?;
         for path in paths {
@@ -277,6 +294,24 @@ fn draw_class(
         context.restore();
     }
     Ok(())
+}
+
+fn css_tile(placement: VisibleTile) -> VisibleTile {
+    VisibleTile {
+        left: placement.left * CSS_PER_UNIT,
+        top: placement.top * CSS_PER_UNIT,
+        size: placement.size * CSS_PER_UNIT,
+        ..placement
+    }
+}
+
+fn css_rect(rect: Rect) -> Rect {
+    Rect {
+        left: rect.left * CSS_PER_UNIT,
+        top: rect.top * CSS_PER_UNIT,
+        right: rect.right * CSS_PER_UNIT,
+        bottom: rect.bottom * CSS_PER_UNIT,
+    }
 }
 
 fn add_line(path: &Path2d, points: impl IntoIterator<Item = ScreenPoint>) {

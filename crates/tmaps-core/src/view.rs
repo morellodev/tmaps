@@ -6,7 +6,7 @@ use crate::tiles::TileId;
 /// Deepest zoom of the view. Above the zoom of the tile set, the renderer scales the deepest tiles.
 pub const MAX_ZOOM: f64 = 18.0;
 /// Width of a tile in screen units at its own zoom. Each renderer picks the size of a unit, for
-/// example one braille dot or one CSS pixel.
+/// example one braille dot or two CSS pixels.
 pub const TILE_SIZE: f64 = 256.0;
 /// The part of the screen that [`View::fitting`] fills, so that the points keep a margin.
 const FIT_FILL: f64 = 0.8;
