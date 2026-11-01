@@ -105,13 +105,17 @@ docker run --rm -v "$PWD":/src:ro -w /src -e CARGO_TARGET_DIR=/tmp/target -e CI=
 docker run --rm -v "$PWD":/src:ro -w /src -e CARGO_TARGET_DIR=/tmp/target rust:<rust-version>-slim sh -c "rustup target add wasm32-unknown-unknown && cargo check -p tmaps-core -p tmaps-braille --target wasm32-unknown-unknown --locked"
 ```
 
-`tmaps-canvas` draws the map on an HTML canvas. To build the demo page in `examples/canvas/`, run this command. The `wasm-bindgen-cli` version must be the same as the `wasm-bindgen` version in `Cargo.lock`.
+`tmaps-canvas` draws the map on an HTML canvas. The demo page in `examples/canvas/` uses Vite and needs pnpm and Docker. pnpm downloads the Node version that `devEngines` in its `package.json` gives. To start it, run these commands:
 
 ```sh
-mkdir -p examples/canvas/pkg && docker run --rm -v "$PWD":/src:ro -v "$PWD/examples/canvas/pkg":/out -w /src -e CARGO_TARGET_DIR=/tmp/target rust:<rust-version>-slim sh -c "rustup target add wasm32-unknown-unknown && cargo install wasm-bindgen-cli --version <wasm-bindgen-version> --locked && cargo build -p tmaps-canvas --target wasm32-unknown-unknown --release --locked && wasm-bindgen --target web --out-dir /out /tmp/target/wasm32-unknown-unknown/release/tmaps_canvas.wasm && chown -R $(id -u):$(id -g) /out"
+pnpm install
+pnpm --filter tmaps-canvas-demo wasm
+pnpm --filter tmaps-canvas-demo dev
 ```
 
-Then serve `examples/canvas/` with a local server, for example `python3 -m http.server -d examples/canvas`, and open `http://localhost:8000`.
+The `wasm` script builds `tmaps-canvas` in Docker, so the host needs no wasm32 target. It installs the `wasm-bindgen-cli` version from `Cargo.lock`, because the CLI and the crate must have the same version. Run it again after a change to the Rust code. Two Docker volumes, `tmaps-canvas-target` and `tmaps-canvas-registry`, keep the build cache between runs.
+
+To type-check and build the page into `examples/canvas/dist/`, run `pnpm --filter tmaps-canvas-demo build`. To serve the build, run `pnpm --filter tmaps-canvas-demo preview`.
 
 ## License
 
