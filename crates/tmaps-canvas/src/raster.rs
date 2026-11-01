@@ -53,6 +53,14 @@ pub fn bitmap_side(size: f64, ratio: f64) -> u32 {
     pixels + 2 * BLEED
 }
 
+/// The palette and the layers of a bitmap. A bitmap of another style does not show, also not in
+/// place of a missing cell, because it can show a layer that the user hid.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Style {
+    pub dark: bool,
+    pub layers: Layers,
+}
+
 /// What a bitmap shows.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Look {
@@ -60,8 +68,7 @@ pub struct Look {
     pub zoom: f64,
     /// Device pixels for each CSS pixel.
     pub ratio: f64,
-    pub dark: bool,
-    pub layers: Layers,
+    pub style: Style,
 }
 
 /// Why a cell needs a new bitmap, the most urgent first.
@@ -110,8 +117,7 @@ impl<B> RasterCache<B> {
             return Some(Need::Empty);
         };
         let look = raster.look;
-        if look.dark != want.dark
-            || look.layers != want.layers
+        if look.style != want.style
             || (look.ratio - want.ratio).abs() > f64::EPSILON
             || look.source.z < want.source.z
         {
@@ -137,28 +143,43 @@ impl<B> RasterCache<B> {
             .map(|raster| raster.bitmap)
     }
 
-    /// The bitmap of `cell` and what it shows, for this frame.
-    pub fn get(&mut self, cell: TileId) -> Option<(&B, Look)> {
+    /// The bitmap of `cell` and what it shows, for this frame, if the bitmap has `style`.
+    pub fn get(&mut self, cell: TileId, style: Style) -> Option<(&B, Look)> {
         let frame = self.frame;
-        let raster = self.cells.get_mut(&cell)?;
+        let raster = self
+            .cells
+            .get_mut(&cell)
+            .filter(|raster| raster.look.style == style)?;
         raster.used = frame;
         Some((&raster.bitmap, raster.look))
     }
 
-    /// The cells that have a bitmap to show in place of `cell`, which has none, at their places
-    /// on the screen: the nearest ancestor with a bitmap, else the children with a bitmap.
-    pub fn fallback(&self, cell: &VisibleTile) -> Vec<VisibleTile> {
+    /// Whether `cell` shows a bitmap of `style`: its own bitmap or a fallback.
+    #[must_use]
+    pub fn shows(&self, cell: &VisibleTile, style: Style) -> bool {
+        self.has(cell.id, style) || !self.fallback(cell, style).is_empty()
+    }
+
+    fn has(&self, cell: TileId, style: Style) -> bool {
+        self.cells
+            .get(&cell)
+            .is_some_and(|raster| raster.look.style == style)
+    }
+
+    /// The cells that have a bitmap of `style` to show in place of `cell`, at their places on the
+    /// screen: the nearest ancestor with a bitmap, else the children with a bitmap.
+    pub fn fallback(&self, cell: &VisibleTile, style: Style) -> Vec<VisibleTile> {
         let lowest = cell.id.z.saturating_sub(FALLBACK_LEVELS);
         let ancestor = (lowest..cell.id.z)
             .rev()
             .filter_map(|z| cell.ancestor(z))
-            .find(|ancestor| self.cells.contains_key(&ancestor.id));
+            .find(|ancestor| self.has(ancestor.id, style));
         if let Some(ancestor) = ancestor {
             return vec![ancestor];
         }
         children(cell)
             .into_iter()
-            .filter(|child| self.cells.contains_key(&child.id))
+            .filter(|child| self.has(child.id, style))
             .collect()
     }
 
@@ -232,10 +253,19 @@ mod tests {
             source,
             zoom,
             ratio: 2.0,
-            dark: false,
-            layers: Layers::ALL,
+            style: LIGHT,
         }
     }
+
+    const LIGHT: Style = Style {
+        dark: false,
+        layers: Layers::ALL,
+    };
+
+    const DARK: Style = Style {
+        dark: true,
+        layers: Layers::ALL,
+    };
 
     #[test]
     fn grid_follows_the_zoom_past_the_tile_set() {
@@ -278,7 +308,7 @@ mod tests {
         cache.insert(tile, (), look(tile, 12.0), 1.0);
         assert_eq!(cache.need(tile, look(id(11, 0, 0), 12.0), true), None);
         let dark = Look {
-            dark: true,
+            style: DARK,
             ..look(tile, 12.0)
         };
         assert_eq!(cache.need(tile, dark, false), Some(Need::Content));
@@ -290,7 +320,10 @@ mod tests {
         let tile = id(12, 1, 1);
         cache.insert(tile, (), look(tile, 12.0), 1.0);
         let without_roads = Look {
-            layers: Layers::ALL.toggled(Layer::Roads),
+            style: Style {
+                layers: Layers::ALL.toggled(Layer::Roads),
+                ..LIGHT
+            },
             ..look(tile, 12.0)
         };
         assert_eq!(cache.need(tile, without_roads, true), Some(Need::Content));
@@ -316,9 +349,9 @@ mod tests {
             top: 50.0,
             size: 300.0,
         };
-        assert_eq!(cache.fallback(&missing), Vec::new());
+        assert_eq!(cache.fallback(&missing, LIGHT), Vec::new());
         cache.insert(id(11, 9, 12), (), look(id(11, 9, 12), 11.0), 1.0);
-        let children = cache.fallback(&missing);
+        let children = cache.fallback(&missing, LIGHT);
         assert_eq!(children.len(), 1);
         assert_eq!(children[0].id, id(11, 9, 12));
         assert_eq!(
@@ -326,7 +359,7 @@ mod tests {
             (250.0, 50.0, 150.0)
         );
         cache.insert(id(8, 1, 1), (), look(id(8, 1, 1), 8.0), 1.0);
-        let ancestor = cache.fallback(&missing);
+        let ancestor = cache.fallback(&missing, LIGHT);
         assert_eq!(ancestor.len(), 1);
         assert_eq!(ancestor[0].id, id(8, 1, 1));
         assert_eq!(ancestor[0].size, 1200.0);
@@ -340,10 +373,64 @@ mod tests {
         cache.insert(id(1, 1, 0), "older", look(id(1, 1, 0), 1.0), 10.0);
         cache.begin_frame();
         cache.insert(id(1, 0, 1), "new", look(id(1, 0, 1), 1.0), 10.0);
-        let _ = cache.get(id(1, 0, 0));
+        let _ = cache.get(id(1, 0, 0), LIGHT);
         assert_eq!(cache.evict(15.0), Vec::<&str>::new());
         assert_eq!(cache.evict(5.0), vec!["older"]);
         assert_eq!(cache.evict(0.0), Vec::<&str>::new());
-        assert!(cache.get(id(1, 0, 0)).is_some());
+        assert!(cache.get(id(1, 0, 0), LIGHT).is_some());
+    }
+
+    #[test]
+    fn eviction_removes_a_bitmap_of_another_style_on_the_screen() {
+        let mut cache = RasterCache::default();
+        cache.insert(id(1, 0, 0), "light", look(id(1, 0, 0), 1.0), 10.0);
+        cache.begin_frame();
+        let _ = cache.get(id(1, 0, 0), DARK);
+        assert_eq!(cache.evict(0.0), vec!["light"]);
+    }
+
+    #[test]
+    fn bitmap_of_another_style_does_not_show() {
+        let mut cache = RasterCache::default();
+        cache.insert(id(1, 0, 0), (), look(id(1, 0, 0), 1.0), 1.0);
+        assert!(cache.get(id(1, 0, 0), DARK).is_none());
+    }
+
+    #[test]
+    fn cell_with_only_a_bitmap_of_another_style_shows_nothing() {
+        let mut cache = RasterCache::default();
+        cache.insert(id(10, 4, 6), (), look(id(10, 4, 6), 10.0), 1.0);
+        assert!(!cache.shows(&cell(10, 4, 6), DARK));
+    }
+
+    #[test]
+    fn cell_with_a_fallback_of_its_style_shows() {
+        let mut cache = RasterCache::default();
+        cache.insert(id(9, 2, 3), (), look(id(9, 2, 3), 9.0), 1.0);
+        assert!(cache.shows(&cell(10, 4, 6), LIGHT));
+    }
+
+    #[test]
+    fn missing_cell_skips_an_ancestor_of_another_style() {
+        let mut cache = RasterCache::default();
+        let missing = cell(10, 4, 6);
+        cache.insert(id(9, 2, 3), (), look(id(9, 2, 3), 9.0), 1.0);
+        let dark = Look {
+            style: DARK,
+            ..look(id(8, 1, 1), 8.0)
+        };
+        cache.insert(id(8, 1, 1), (), dark, 1.0);
+        let ancestor = cache.fallback(&missing, DARK);
+        assert_eq!(
+            ancestor.iter().map(|tile| tile.id).collect::<Vec<_>>(),
+            [id(8, 1, 1)]
+        );
+    }
+
+    #[test]
+    fn missing_cell_skips_children_of_another_style() {
+        let mut cache = RasterCache::default();
+        cache.insert(id(11, 8, 12), (), look(id(11, 8, 12), 11.0), 1.0);
+        assert_eq!(cache.fallback(&cell(10, 4, 6), DARK), Vec::new());
     }
 }
