@@ -32,11 +32,11 @@ use tmaps_core::tiles::{DEFAULT_CACHE_BYTES, DiskCache, TileSource};
 use tokio::sync::{Notify, mpsc};
 use tokio::time::MissedTickBehavior;
 
-use crate::app::App;
-use crate::loader::Loader;
-use crate::message::Message;
-use crate::palette::Palette;
-use crate::services::Services;
+use crate::tui::app::App;
+use crate::tui::loader::Loader;
+use crate::tui::message::Message;
+use crate::tui::palette::Palette;
+use crate::tui::services::Services;
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {

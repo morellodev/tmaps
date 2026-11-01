@@ -5,7 +5,7 @@ use tmaps_core::render::PreparedTile;
 use tmaps_core::tiles::{TileId, TileSource};
 use tokio::sync::{Semaphore, mpsc};
 
-use crate::message::{Message, Server, SourceInfo, describe};
+use crate::tui::message::{Message, Server, SourceInfo, describe};
 
 /// More parallel requests than a browser makes to one host would be unfair to a free server.
 const MAX_REQUESTS: usize = 6;

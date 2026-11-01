@@ -3339,16 +3339,24 @@ version = "0.1.0"
 dependencies = [
  "assert_cmd",
  "clap",
+ "crossterm",
+ "futures-util",
  "jiff",
  "jsonschema",
+ "lru 0.19.0",
+ "ratatui",
  "schemars",
  "serde",
  "serde_json",
  "tempfile",
+ "terminal-colorsaurus",
+ "textwrap",
  "thiserror 2.0.21",
  "tmaps-core",
- "tmaps-tui",
  "tokio",
+ "toml",
+ "unicode-segmentation",
+ "unicode-width",
  "wiremock",
 ]
 
@@ -3373,27 +3381,6 @@ dependencies = [
  "tokio",
  "toml",
  "toml_edit",
- "unicode-segmentation",
- "unicode-width",
- "wiremock",
-]
-
-[[package]]
-name = "tmaps-tui"
-version = "0.1.0"
-dependencies = [
- "crossterm",
- "futures-util",
- "lru 0.19.0",
- "ratatui",
- "serde",
- "tempfile",
- "terminal-colorsaurus",
- "textwrap",
- "thiserror 2.0.21",
- "tmaps-core",
- "tokio",
- "toml",
  "unicode-segmentation",
  "unicode-width",
  "wiremock",

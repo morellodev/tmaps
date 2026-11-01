@@ -16,11 +16,11 @@ use tmaps_core::render::{
 use tmaps_core::routing::{Mode, Route};
 use tmaps_core::tiles::TileId;
 
-use crate::message::{Message, SourceInfo};
-use crate::prompt::{self, Change, Input, Prompt, Search};
-use crate::regions::Regions;
-use crate::services::Request;
-use crate::trip::{End, Routes, Trip};
+use crate::tui::message::{Message, SourceInfo};
+use crate::tui::prompt::{self, Change, Input, Prompt, Search};
+use crate::tui::regions::Regions;
+use crate::tui::services::Request;
+use crate::tui::trip::{End, Routes, Trip};
 
 /// Holds more tiles than the largest screen shows, so that a pan back does not reload them.
 const TILE_CACHE_SIZE: NonZeroUsize = NonZeroUsize::new(64).unwrap();
@@ -855,8 +855,8 @@ mod tests {
     use tmaps_core::geocode::Extent;
 
     use super::*;
-    use crate::regions::ListRegion;
-    use crate::trip::sample_route;
+    use crate::tui::regions::ListRegion;
+    use crate::tui::trip::sample_route;
 
     fn milan() -> LatLon {
         LatLon::new(45.4642, 9.19).unwrap()
