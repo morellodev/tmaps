@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0](https://github.com/morellodev/tmaps/compare/v0.2.0...v0.3.0) - 2026-11-01
+
+### Added
+
+- let users show or hide map layers and labels ([#21](https://github.com/morellodev/tmaps/pull/21))
+
+### Other
+
+- add a README to each crate and a pull request template ([#19](https://github.com/morellodev/tmaps/pull/19))
+
 ## [0.2.0](https://github.com/morellodev/tmaps/compare/v0.1.0...v0.2.0) - 2026-11-01
 
 ### Added
