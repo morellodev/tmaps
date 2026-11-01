@@ -1,26 +1,23 @@
 use std::f64::consts::PI;
 
-use tmaps_core::LatLon;
-use tmaps_core::mvt::Tile;
-use tmaps_core::render::{Canvas, Class, PreparedTile, RouteLine, View, render};
+use tmaps_braille::{BrailleTile, Grid, RouteLine, render};
+use tmaps_core::style::Class;
 use tmaps_core::tiles::{DEFAULT_MAX_ZOOM, TileId};
+use tmaps_core::view::View;
+use tmaps_core::{LatLon, PreparedTile};
 
 const WIDTH: u16 = 100;
 const HEIGHT: u16 = 40;
 
-fn fixture_bytes(id: TileId) -> Vec<u8> {
+fn fixture(id: TileId, lang: &str) -> BrailleTile {
     let path = format!(
-        "{}/tests/fixtures/tiles/{}-{}-{}.pbf",
+        "{}/../tmaps-core/tests/fixtures/tiles/{}-{}-{}.pbf",
         env!("CARGO_MANIFEST_DIR"),
         id.z,
         id.x,
         id.y
     );
-    std::fs::read(path).unwrap()
-}
-
-fn fixture(id: TileId, lang: &str) -> PreparedTile {
-    PreparedTile::decode(&fixture_bytes(id), lang).unwrap()
+    BrailleTile::prepare(PreparedTile::decode(&std::fs::read(path).unwrap(), lang).unwrap())
 }
 
 fn center_of(id: TileId) -> LatLon {
@@ -39,19 +36,26 @@ fn snapshot(id: TileId, zoom: f64, lang: &str) -> String {
 fn snapshot_with_routes(id: TileId, zoom: f64, lang: &str, routes: &[RouteLine<'_>]) -> String {
     let tile = fixture(id, lang);
     let view = View::new(center_of(id), zoom);
-    let canvas = render(view, WIDTH, HEIGHT, DEFAULT_MAX_ZOOM, routes, |requested| {
-        (requested == id).then_some(&tile)
-    });
+    let cursor = (WIDTH / 2, HEIGHT / 2);
+    let grid = render(
+        view,
+        WIDTH,
+        HEIGHT,
+        DEFAULT_MAX_ZOOM,
+        routes,
+        &[cursor],
+        |requested| (requested == id).then_some(&tile),
+    );
     format!(
         "{}\n\n{}\n\n{}",
-        braille_rows(&canvas),
-        class_rows(&canvas),
-        labels(&canvas)
+        braille_rows(&grid),
+        class_rows(&grid),
+        labels(&grid)
     )
 }
 
-fn labels(canvas: &Canvas) -> String {
-    let lines: Vec<String> = canvas
+fn labels(grid: &Grid) -> String {
+    let lines: Vec<String> = grid
         .labels()
         .iter()
         .map(|label| {
@@ -64,16 +68,16 @@ fn labels(canvas: &Canvas) -> String {
     lines.join("\n")
 }
 
-fn braille_rows(canvas: &Canvas) -> String {
-    let rows: Vec<String> = canvas
+fn braille_rows(grid: &Grid) -> String {
+    let rows: Vec<String> = grid
         .rows()
         .map(|row| row.iter().map(|cell| cell.symbol()).collect())
         .collect();
     rows.join("\n")
 }
 
-fn class_rows(canvas: &Canvas) -> String {
-    let rows: Vec<String> = canvas
+fn class_rows(grid: &Grid) -> String {
+    let rows: Vec<String> = grid
         .rows()
         .map(|row| {
             row.iter()
@@ -107,14 +111,6 @@ const MILAN_Z14: TileId = TileId {
     y: 5863,
 };
 const MILAN_Z5: TileId = TileId { z: 5, x: 16, y: 11 };
-
-#[test]
-fn decode_skips_only_the_layers_that_prepare_drops() {
-    for id in [MILAN_Z14, MILAN_Z5] {
-        let full = PreparedTile::new(&Tile::decode(&fixture_bytes(id)).unwrap(), "en");
-        assert_eq!(fixture(id, "en"), full, "tile {id}");
-    }
-}
 
 #[test]
 fn render_city_streets() {

@@ -34,7 +34,7 @@ impl Class {
         Self::Route,
     ];
 
-    /// Areas fill the background of cells. The other classes draw lines of dots.
+    /// Areas are filled. The other classes are lines.
     #[must_use]
     pub fn is_area(self) -> bool {
         matches!(self, Self::Green | Self::Water | Self::Building)
@@ -45,19 +45,19 @@ impl Class {
         matches!(self, Self::Alternative | Self::Route)
     }
 
-    pub(super) fn index(self) -> usize {
+    pub(crate) fn index(self) -> usize {
         self as usize
     }
 }
 
-pub(super) struct Style {
+pub(crate) struct Style {
     pub class: Class,
     /// The view hides the feature below this zoom, where it is too dense to read.
     pub min_zoom: f64,
 }
 
 /// The layers that [`classify`] can give a style.
-pub(super) const LAYERS: [&str; 7] = [
+pub(crate) const LAYERS: [&str; 7] = [
     "water",
     "park",
     "landcover",
@@ -69,7 +69,7 @@ pub(super) const LAYERS: [&str; 7] = [
 
 /// Picks the style of a feature from its layer and properties in the `OpenMapTiles` schema:
 /// <https://openmaptiles.org/schema/>.
-pub(super) fn classify(layer: &Layer, feature: &Feature) -> Option<Style> {
+pub(crate) fn classify(layer: &Layer, feature: &Feature) -> Option<Style> {
     let text = |key| layer.property(feature, key).and_then(Value::as_str);
     let style = |class, min_zoom| Some(Style { class, min_zoom });
     match layer.name.as_str() {

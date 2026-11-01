@@ -295,10 +295,15 @@ mod proto {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-util"))]
 impl Layer {
-    /// A layer with one feature for each `(geometry, properties)` pair.
-    pub(crate) fn with_features(
+    /// A layer with one feature for each `(geometry, properties)` pair, for tests and fakes.
+    ///
+    /// # Panics
+    ///
+    /// If the layer gets more than `u32::MAX` keys or values.
+    #[must_use]
+    pub fn with_features(
         name: &str,
         extent: u32,
         features: Vec<(Geometry, Vec<(&str, Value)>)>,

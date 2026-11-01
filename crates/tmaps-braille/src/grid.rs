@@ -1,12 +1,13 @@
-use super::label::Label;
-use super::style::Class;
-use super::{DOTS_PER_CELL_X, DOTS_PER_CELL_Y};
+use tmaps_core::style::Class;
+
+use crate::label::Label;
+use crate::{DOTS_PER_CELL_X, DOTS_PER_CELL_Y};
 
 /// A grid of terminal cells. Lines set braille dots and the foreground class; areas set the
 /// background class. Labels cover the cells under their text. A cell with route dots shows no
 /// map dots, so that the route stays readable.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Canvas {
+pub struct Grid {
     width: u16,
     height: u16,
     cells: Vec<Cell>,
@@ -36,7 +37,7 @@ impl Cell {
 /// Bit of each dot, indexed by `[row][column]` inside the cell.
 const DOT_BITS: [[u8; 2]; 4] = [[0x01, 0x08], [0x02, 0x10], [0x04, 0x20], [0x40, 0x80]];
 
-impl Canvas {
+impl Grid {
     #[must_use]
     pub fn new(width: u16, height: u16) -> Self {
         Self {
@@ -78,11 +79,11 @@ impl Canvas {
         &self.labels
     }
 
-    pub(super) fn add_label(&mut self, label: Label) {
+    pub(crate) fn add_label(&mut self, label: Label) {
         self.labels.push(label);
     }
 
-    pub(super) fn set_dot(&mut self, x: i64, y: i64, class: Class) {
+    pub(crate) fn set_dot(&mut self, x: i64, y: i64, class: Class) {
         let (Ok(x), Ok(y)) = (u16::try_from(x), u16::try_from(y)) else {
             return;
         };
@@ -97,14 +98,14 @@ impl Canvas {
         }
     }
 
-    pub(super) fn fill(&mut self, column: u16, row: u16, class: Class) {
+    pub(crate) fn fill(&mut self, column: u16, row: u16, class: Class) {
         if let Some(cell) = self.cell_mut(column, row) {
             cell.bg = Some(class);
         }
     }
 
     /// Whether a route crosses one of the cells `columns` of `row`.
-    pub(super) fn has_route(&self, row: u16, columns: std::ops::Range<u16>) -> bool {
+    pub(crate) fn has_route(&self, row: u16, columns: std::ops::Range<u16>) -> bool {
         let start = usize::from(row) * usize::from(self.width);
         columns.into_iter().any(|column| {
             column < self.width
@@ -116,7 +117,7 @@ impl Canvas {
         })
     }
 
-    pub(super) fn cell(&self, column: u16, row: u16) -> Option<Cell> {
+    pub(crate) fn cell(&self, column: u16, row: u16) -> Option<Cell> {
         if column >= self.width {
             return None;
         }
@@ -140,33 +141,33 @@ mod tests {
 
     #[test]
     fn dots_build_the_braille_character() {
-        let mut canvas = Canvas::new(1, 1);
-        canvas.set_dot(0, 0, Class::MinorRoad);
-        canvas.set_dot(1, 3, Class::MinorRoad);
-        assert_eq!(canvas.rows().next().unwrap()[0].symbol(), '⢁');
+        let mut grid = Grid::new(1, 1);
+        grid.set_dot(0, 0, Class::MinorRoad);
+        grid.set_dot(1, 3, Class::MinorRoad);
+        assert_eq!(grid.rows().next().unwrap()[0].symbol(), '⢁');
     }
 
     #[test]
     fn route_dot_removes_the_map_dots_of_its_cell() {
-        let mut canvas = Canvas::new(1, 1);
-        canvas.set_dot(0, 0, Class::MinorRoad);
-        canvas.set_dot(1, 3, Class::Route);
-        assert_eq!(canvas.rows().next().unwrap()[0].symbol(), '⢀');
+        let mut grid = Grid::new(1, 1);
+        grid.set_dot(0, 0, Class::MinorRoad);
+        grid.set_dot(1, 3, Class::Route);
+        assert_eq!(grid.rows().next().unwrap()[0].symbol(), '⢀');
     }
 
     #[test]
     fn route_dot_removes_the_alternative_dots_of_its_cell() {
-        let mut canvas = Canvas::new(1, 1);
-        canvas.set_dot(0, 0, Class::Alternative);
-        canvas.set_dot(1, 3, Class::Route);
-        assert_eq!(canvas.rows().next().unwrap()[0].symbol(), '⢀');
+        let mut grid = Grid::new(1, 1);
+        grid.set_dot(0, 0, Class::Alternative);
+        grid.set_dot(1, 3, Class::Route);
+        assert_eq!(grid.rows().next().unwrap()[0].symbol(), '⢀');
     }
 
     #[test]
-    fn dot_outside_the_canvas_is_ignored() {
-        let mut canvas = Canvas::new(1, 1);
-        canvas.set_dot(2, 0, Class::MinorRoad);
-        canvas.set_dot(-1, 0, Class::MinorRoad);
-        assert_eq!(canvas, Canvas::new(1, 1));
+    fn dot_outside_the_grid_is_ignored() {
+        let mut grid = Grid::new(1, 1);
+        grid.set_dot(2, 0, Class::MinorRoad);
+        grid.set_dot(-1, 0, Class::MinorRoad);
+        assert_eq!(grid, Grid::new(1, 1));
     }
 }

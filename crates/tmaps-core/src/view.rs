@@ -5,8 +5,9 @@ use crate::tiles::TileId;
 
 /// Deepest zoom of the view. Above the zoom of the tile set, the renderer scales the deepest tiles.
 pub const MAX_ZOOM: f64 = 18.0;
-/// Width of a tile in braille dots at its own zoom. Dots are about square in common terminal fonts.
-const TILE_DOTS: f64 = 256.0;
+/// Width of a tile in screen units at its own zoom. Each renderer picks the size of a unit, for
+/// example one braille dot or one CSS pixel.
+pub const TILE_SIZE: f64 = 256.0;
 /// The part of the screen that [`View::fitting`] fills, so that the points keep a margin.
 const FIT_FILL: f64 = 0.8;
 /// Web Mercator stops at this latitude, where the projected world is square.
@@ -21,13 +22,13 @@ pub struct View {
     zoom: f64,
 }
 
-/// A tile to draw, and where its top-left corner is in screen dots.
+/// A tile to draw, and where its top-left corner is in screen units.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct VisibleTile {
     pub id: TileId,
     pub left: f64,
     pub top: f64,
-    /// Width and height in dots. More than 256 when the view overzooms the tile.
+    /// Width and height in units. More than [`TILE_SIZE`] when the view overzooms the tile.
     pub size: f64,
 }
 
@@ -52,10 +53,10 @@ impl View {
         self.zoom
     }
 
-    /// Moves the view by a distance in dots. Positive values move east and south.
+    /// Moves the view by a distance in units. Positive values move east and south.
     #[must_use]
     pub fn pan(self, dx: f64, dy: f64) -> Self {
-        let scale = self.dots_per_world();
+        let scale = self.units_per_world();
         Self {
             x: (self.x + dx / scale).rem_euclid(1.0),
             y: (self.y + dy / scale).clamp(0.0, 1.0),
@@ -83,13 +84,13 @@ impl View {
         zoom.min(max_zoom)
     }
 
-    /// The tiles that cover a screen of `width` × `height` dots, nearest to the center first.
+    /// The tiles that cover a screen of `width` × `height` units, nearest to the center first.
     /// A tile can appear more than once when the world is narrower than the screen.
     #[must_use]
     pub fn visible_tiles(self, width: f64, height: f64, max_zoom: u8) -> Vec<VisibleTile> {
         let tile_zoom = self.tile_zoom(max_zoom);
         let tiles_per_side = f64::from(1_u32 << tile_zoom);
-        let size = self.dots_per_world() / tiles_per_side;
+        let size = self.units_per_world() / tiles_per_side;
         let (left, top) = self.screen_origin(width, height);
         let first_x = (left / size).floor();
         let last_x = ((left + width) / size).ceil();
@@ -132,13 +133,13 @@ impl View {
         tiles
     }
 
-    /// The point at a position on a screen of `width` × `height` dots.
+    /// The point at a position on a screen of `width` × `height` units.
     #[must_use]
     pub fn point_at(self, x: f64, y: f64, width: f64, height: f64) -> LatLon {
         self.pan(x - width / 2.0, y - height / 2.0).center()
     }
 
-    /// The position in dots of `point` on a screen of `width` × `height` dots. Of the copies of
+    /// The position in units of `point` on a screen of `width` × `height` units. Of the copies of
     /// the world, the point takes the one nearest to the center.
     #[must_use]
     pub fn screen_position(self, point: LatLon, width: f64, height: f64) -> (f64, f64) {
@@ -146,7 +147,7 @@ impl View {
         self.world_to_screen(nearest_copy(x, self.x), y, width, height)
     }
 
-    /// The screen positions in dots of a line. Each point takes the world copy nearest to the
+    /// The screen positions in units of a line. Each point takes the world copy nearest to the
     /// previous point, so a line across the antimeridian stays connected.
     #[must_use]
     pub fn line_on_screen(self, points: &[LatLon], width: f64, height: f64) -> Vec<(f64, f64)> {
@@ -155,7 +156,7 @@ impl View {
             .collect()
     }
 
-    /// The view that shows all `points` with a margin on a screen of `width` × `height` dots,
+    /// The view that shows all `points` with a margin on a screen of `width` × `height` units,
     /// or `None` without points.
     #[must_use]
     pub fn fitting(points: &[LatLon], width: f64, height: f64) -> Option<Self> {
@@ -166,7 +167,7 @@ impl View {
             (min_x, max_x) = (min_x.min(x), max_x.max(x));
             (min_y, max_y) = (min_y.min(y), max_y.max(y));
         }
-        let zoom_for = |screen: f64, span: f64| (screen * FIT_FILL / (span * TILE_DOTS)).log2();
+        let zoom_for = |screen: f64, span: f64| (screen * FIT_FILL / (span * TILE_SIZE)).log2();
         let zoom = zoom_for(width, max_x - min_x).min(zoom_for(height, max_y - min_y));
         Some(Self {
             x: f64::midpoint(min_x, max_x).rem_euclid(1.0),
@@ -181,20 +182,20 @@ impl View {
     }
 
     fn world_to_screen(self, x: f64, y: f64, width: f64, height: f64) -> (f64, f64) {
-        let scale = self.dots_per_world();
+        let scale = self.units_per_world();
         (
             (x - self.x) * scale + width / 2.0,
             (y - self.y) * scale + height / 2.0,
         )
     }
 
-    fn dots_per_world(self) -> f64 {
-        TILE_DOTS * self.zoom.exp2()
+    fn units_per_world(self) -> f64 {
+        TILE_SIZE * self.zoom.exp2()
     }
 
-    /// World position of the top-left screen corner, in dots at this zoom.
+    /// World position of the top-left screen corner, in units at this zoom.
     fn screen_origin(self, width: f64, height: f64) -> (f64, f64) {
-        let scale = self.dots_per_world();
+        let scale = self.units_per_world();
         (self.x * scale - width / 2.0, self.y * scale - height / 2.0)
     }
 }

@@ -1,5 +1,5 @@
+use tmaps_braille::BrailleTile;
 use tmaps_core::LatLon;
-use tmaps_core::render::PreparedTile;
 use tmaps_core::tiles::TileId;
 
 use crate::Error;
@@ -10,7 +10,7 @@ use crate::routing::{Mode, Route};
 #[derive(Debug)]
 pub enum Message {
     Source(Result<SourceInfo, String>),
-    Tile(TileId, Result<Box<PreparedTile>, String>),
+    Tile(TileId, Result<Box<BrailleTile>, String>),
     /// The tile left the screen before its request started.
     Skipped(TileId),
     Routes(u64, Result<Vec<Route>, String>),

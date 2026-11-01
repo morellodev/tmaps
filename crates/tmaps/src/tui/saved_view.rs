@@ -4,7 +4,7 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 use tmaps_core::LatLon;
-use tmaps_core::render::View;
+use tmaps_core::view::View;
 
 use crate::file::write_atomically;
 

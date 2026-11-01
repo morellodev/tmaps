@@ -1,7 +1,7 @@
 ---
-source: crates/tmaps-core/tests/render.rs
-assertion_line: 118
-expression: "snapshot(MILAN_Z5, 5.0, \"en-US\")"
+source: crates/tmaps-braille/tests/render.rs
+assertion_line: 113
+expression: "snapshot(MILAN_Z5, 5.0, \"it-IT\")"
 ---
 ⠁⠈      ⢸⡀        ⠘⣷           ⠉⠉⠒⠢⡄       ⣰⢠⠃        ⠠⡌   ⣀⣀⣀⡴⠚⢠⢽⣙⡹⡤⢤⣾⣛⣼⡟⢻⢛⣶⡉⠢⣦⠦⣇⣠⣷⣨⠇ ⣯⡾⡷⢿⣟⣹⡿⣾⣷⣰⠁ ⠙
 ⣀⣠⠤⠤⠤⠦⠤⣀⣀⡇        ⠰⣇               ⠈⠳⡄⢀⣀⣀⡠⠴⣲⣼         ⣞⠥⠤⠒⠋⠁    ⢛⣺⠇⢙⣒⣲⣍⣹⢜⣙⣺⣿⡥⠿⠉⢁⡀⣺⠿⡇⢬⣓⣀⢘⡇⡇⢸⢭⡟⢓⢿⣿⠁   
@@ -85,23 +85,23 @@ ggggH     gggggggggHHwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww
 BBggHrH     ggggHHHHHwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww  wwwwww
 gBBBHBH ggggg  H HHHHwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww      Hwwwwww
 
- 7,  4 Country: France
- 6, 74 Country: Switzerland
+ 7,  4 Country: Francia
+ 6, 75 Country: Svizzera
 30, 67 Country: Monaco
-10, 52 City: Geneva
-16, 88 City: Milan
- 1, 80 City: Zurich
-14, 38 City: Lyon
-34, 43 City: Marseille
- 4, 68 City: Bern
-20, 71 City: Turin
-25, 85 City: Genoa
-31, 66 City: Nice
-28, 42 State: Provence-Alpes-Côte d'Azur
+10, 52 City: Ginevra
+16, 87 City: Milano
+ 1, 80 City: Zurigo
+14, 38 City: Lione
+34, 43 City: Marsiglia
+ 4, 68 City: Berna
+20, 70 City: Torino
+25, 84 City: Genova
+31, 66 City: Nizza
+28, 42 State: Provenza-Alpi-Costa Azzurra
 24, 82 State: Liguria
-19, 72 State: Piedmont
-14, 64 State: Aosta Valley
-18, 29 State: Auvergne-Rhône-Alpes
- 3, 31 State: Bourgogne-Franche-Comté
+19, 72 State: Piemonte
+14, 64 State: Valle d'Aosta
+18, 29 State: Alvernia-Rodano-Alpi
+ 3, 31 State: Borgogna-Franca Contea
 31,  8 State: Occitania
-32, 82 Water: Ligurian Sea
+32, 83 Water: Mar Ligure

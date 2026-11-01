@@ -7,6 +7,10 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 
+[features]
+# Test fakes for the crates that use tmaps-core.
+test-util = []
+
 [lints]
 workspace = true
 
@@ -18,8 +22,3 @@ schemars = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
-unicode-segmentation = "1"
-unicode-width = "0.2"
-
-[dev-dependencies]
-insta = "1"

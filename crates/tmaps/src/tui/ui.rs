@@ -10,8 +10,10 @@ use ratatui::widgets::{
     Block, BorderType, Clear, HighlightSpacing, List, ListItem, ListState, Padding, Paragraph,
     Scrollbar, ScrollbarOrientation, ScrollbarState, Widget,
 };
+use tmaps_braille::{DOTS_PER_CELL_X, DOTS_PER_CELL_Y, Grid};
 use tmaps_core::LatLon;
-use tmaps_core::render::{Canvas, Class, DOTS_PER_CELL_X, DOTS_PER_CELL_Y, View, cursor_cell};
+use tmaps_core::style::Class;
+use tmaps_core::view::View;
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
 
@@ -20,7 +22,7 @@ use crate::format::{distance, duration};
 use crate::geocode::Place;
 use crate::places::validate_name;
 use crate::routing::{Maneuver, Mode, Route, Step};
-use crate::tui::app::{App, Level};
+use crate::tui::app::{App, Level, cursor_cell};
 use crate::tui::palette::Palette;
 use crate::tui::prompt::{Input, Prompt};
 use crate::tui::regions::{ListRegion, Regions};
@@ -178,7 +180,7 @@ pub fn draw(frame: &mut Frame, app: &App, palette: Palette, units: Units) -> Reg
         .collect();
     frame.render_widget(
         MapWidget {
-            canvas: &app.canvas(),
+            grid: &app.grid(),
             palette,
             markers,
             dim: app.prompt().is_some() || app.help(),
@@ -262,7 +264,7 @@ struct Marker {
 }
 
 struct MapWidget<'a> {
-    canvas: &'a Canvas,
+    grid: &'a Grid,
     palette: Palette,
     markers: Vec<Marker>,
     /// An open box takes the keys, so the map steps back.
@@ -271,7 +273,7 @@ struct MapWidget<'a> {
 
 impl Widget for MapWidget<'_> {
     fn render(self, area: Rect, buf: &mut Buffer) {
-        for (row, cells) in (area.y..area.bottom()).zip(self.canvas.rows()) {
+        for (row, cells) in (area.y..area.bottom()).zip(self.grid.rows()) {
             // A space shows no foreground, so it keeps the previous color: a color change
             // costs about 40 bytes of output.
             let mut fg = self.palette.text();
@@ -297,7 +299,7 @@ impl Widget for MapWidget<'_> {
                 }
             }
         }
-        for label in self.canvas.labels() {
+        for label in self.grid.labels() {
             let (column, row) = (area.x + label.column, area.y + label.row);
             if column < area.right() && row < area.bottom() {
                 buf.set_stringn(
@@ -1348,8 +1350,8 @@ mod tests {
     use ratatui::Terminal;
     use ratatui::backend::TestBackend;
     use tmaps_core::LatLon;
-    use tmaps_core::render::View;
     use tmaps_core::tiles::TileId;
+    use tmaps_core::view::View;
 
     use super::*;
     use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
@@ -1385,12 +1387,12 @@ mod tests {
 
     #[test]
     fn crosshair_is_on_the_cursor_cell() {
-        let canvas = Canvas::new(8, 6);
+        let grid = Grid::new(8, 6);
         let palette = Palette::new(Depth::Mono, Shade::Dark);
         let area = Rect::new(0, 0, 8, 6);
         let mut buffer = Buffer::empty(area);
         MapWidget {
-            canvas: &canvas,
+            grid: &grid,
             palette,
             markers: Vec::new(),
             dim: false,
@@ -1930,16 +1932,16 @@ mod tests {
     fn blank_cell_keeps_the_color_of_the_line_before_it() {
         let view = View::new(LatLon::new(45.4642, 9.19).unwrap(), 14.0);
         let points = [0.5, 5.5].map(|x| view.point_at(x, 6.0, 16.0, 24.0));
-        let route = tmaps_core::render::RouteLine {
+        let route = tmaps_braille::RouteLine {
             points: &points,
             selected: true,
         };
-        let canvas = tmaps_core::render::render(view, 8, 6, 14, &[route], |_| None);
+        let grid = tmaps_braille::render(view, 8, 6, 14, &[route], &[], |_| None);
         let palette = Palette::new(Depth::Rgb, Shade::Dark);
         let area = Rect::new(0, 0, 8, 6);
         let mut buffer = Buffer::empty(area);
         MapWidget {
-            canvas: &canvas,
+            grid: &grid,
             palette,
             markers: Vec::new(),
             dim: false,
@@ -1950,11 +1952,11 @@ mod tests {
 
     #[test]
     fn dimmed_map_keeps_the_crosshair_bright() {
-        let canvas = Canvas::new(8, 6);
+        let grid = Grid::new(8, 6);
         let area = Rect::new(0, 0, 8, 6);
         let mut buffer = Buffer::empty(area);
         MapWidget {
-            canvas: &canvas,
+            grid: &grid,
             palette: Palette::new(Depth::Mono, Shade::Dark),
             markers: Vec::new(),
             dim: true,
