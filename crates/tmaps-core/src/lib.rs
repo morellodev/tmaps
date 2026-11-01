@@ -17,3 +17,7 @@ pub use scene::{PreparedTile, Scene};
 /// Credit line that every view of provider data must show.
 pub const ATTRIBUTION: &str = "© OpenStreetMap contributors";
 pub use geo::LatLon;
+
+#[cfg(doctest)]
+#[doc = include_str!("../README.md")]
+struct ReadmeDoctests;

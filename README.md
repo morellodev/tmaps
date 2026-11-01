@@ -85,6 +85,15 @@ These services have fair-use limits. tmaps sends at most one route request each 
 
 Map data © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright).
 
+## Crates
+
+| Crate | Description |
+| --- | --- |
+| [`tmaps`](crates/tmaps) | The terminal app and the CLI |
+| [`tmaps-core`](crates/tmaps-core) | The map engine, with no I/O and no drawing |
+| [`tmaps-braille`](crates/tmaps-braille) | The renderer for terminals, with braille characters |
+| [`tmaps-canvas`](crates/tmaps-canvas) | The renderer for the web, on an HTML canvas |
+
 ## Development
 
 ```sh
