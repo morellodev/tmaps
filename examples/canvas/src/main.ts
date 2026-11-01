@@ -17,6 +17,7 @@ function element<T extends Element>(selector: string, type: new () => T): T {
 const canvas = element("#map", HTMLCanvasElement);
 const status = element("#status", HTMLOutputElement);
 const attribution = element("#attribution", HTMLElement);
+const layers = element("#layers", HTMLFieldSetElement);
 
 function showError(message: string) {
   status.value = message;
@@ -72,6 +73,14 @@ const dark = matchMedia("(prefers-color-scheme: dark)");
 map.set_dark(dark.matches);
 dark.addEventListener("change", (event) => {
   map.set_dark(event.matches);
+  redraw();
+});
+
+// The browser can restore the checkboxes of the last visit, so the map reads their state.
+for (const input of layers.querySelectorAll("input")) map.set_layer(input.value, input.checked);
+layers.addEventListener("change", ({ target }) => {
+  if (!(target instanceof HTMLInputElement)) return;
+  map.set_layer(target.value, target.checked);
   redraw();
 });
 

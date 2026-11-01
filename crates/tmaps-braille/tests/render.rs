@@ -1,7 +1,8 @@
 use std::f64::consts::PI;
 
-use tmaps_braille::{BrailleTile, Grid, RouteLine, render};
-use tmaps_core::style::Class;
+use tmaps_braille::{BrailleTile, Frame, Grid, RouteLine, render};
+use tmaps_core::label::LabelClass;
+use tmaps_core::style::{Class, Layer, Layers};
 use tmaps_core::tiles::{DEFAULT_MAX_ZOOM, TileId};
 use tmaps_core::view::View;
 use tmaps_core::{LatLon, PreparedTile};
@@ -34,24 +35,46 @@ fn snapshot(id: TileId, zoom: f64, lang: &str) -> String {
 
 /// Renders the view with only the fixture tile loaded: braille rows, class rows, then labels.
 fn snapshot_with_routes(id: TileId, zoom: f64, lang: &str, routes: &[RouteLine<'_>]) -> String {
-    let tile = fixture(id, lang);
-    let view = View::new(center_of(id), zoom);
-    let cursor = (WIDTH / 2, HEIGHT / 2);
-    let grid = render(
-        view,
-        WIDTH,
-        HEIGHT,
-        DEFAULT_MAX_ZOOM,
-        routes,
-        &[cursor],
-        |requested| (requested == id).then_some(&tile),
-    );
+    let grid = render_fixture(id, zoom, lang, routes, Layers::ALL);
     format!(
         "{}\n\n{}\n\n{}",
         braille_rows(&grid),
         class_rows(&grid),
         labels(&grid)
     )
+}
+
+fn render_fixture(
+    id: TileId,
+    zoom: f64,
+    lang: &str,
+    routes: &[RouteLine<'_>],
+    layers: Layers,
+) -> Grid {
+    let tile = fixture(id, lang);
+    let frame = Frame {
+        view: View::new(center_of(id), zoom),
+        columns: WIDTH,
+        rows: HEIGHT,
+        max_zoom: DEFAULT_MAX_ZOOM,
+        layers,
+    };
+    let cursor = (WIDTH / 2, HEIGHT / 2);
+    render(frame, routes, &[cursor], |requested| {
+        (requested == id).then_some(&tile)
+    })
+}
+
+fn road_cells(grid: &Grid) -> usize {
+    grid.rows()
+        .flat_map(|row| row.iter())
+        .filter(|cell| {
+            [cell.fg, cell.bg]
+                .into_iter()
+                .flatten()
+                .any(|class| class.layer() == Some(Layer::Roads))
+        })
+        .count()
 }
 
 fn labels(grid: &Grid) -> String {
@@ -154,4 +177,45 @@ fn render_route_over_the_streets() {
         },
     ];
     insta::assert_snapshot!(snapshot_with_routes(MILAN_Z14, 14.0, "it-IT", &routes));
+}
+
+#[test]
+fn render_city_streets_draws_road_cells() {
+    let grid = render_fixture(MILAN_Z14, 14.0, "it-IT", &[], Layers::ALL);
+    assert_ne!(road_cells(&grid), 0);
+}
+
+#[test]
+fn render_without_roads_draws_no_road_cells() {
+    let layers = Layers::ALL.toggled(Layer::Roads);
+    let grid = render_fixture(MILAN_Z14, 14.0, "it-IT", &[], layers);
+    assert_eq!(road_cells(&grid), 0);
+}
+
+#[test]
+fn render_overzoomed_streets_places_road_labels() {
+    let grid = render_fixture(MILAN_Z14, 16.0, "it-IT", &[], Layers::ALL);
+    assert!(
+        grid.labels()
+            .iter()
+            .any(|label| label.class == LabelClass::Road)
+    );
+}
+
+#[test]
+fn render_without_roads_places_no_road_labels() {
+    let layers = Layers::ALL.toggled(Layer::Roads);
+    let grid = render_fixture(MILAN_Z14, 16.0, "it-IT", &[], layers);
+    assert!(
+        grid.labels()
+            .iter()
+            .all(|label| label.class != LabelClass::Road)
+    );
+}
+
+#[test]
+fn render_without_labels_places_no_labels() {
+    let layers = Layers::ALL.toggled(Layer::Labels);
+    let grid = render_fixture(MILAN_Z14, 16.0, "it-IT", &[], layers);
+    assert_eq!(grid.labels().len(), 0);
 }

@@ -4,6 +4,7 @@
 
 use std::collections::HashMap;
 
+use tmaps_core::style::Layers;
 use tmaps_core::tiles::TileId;
 use tmaps_core::view::{View, VisibleTile};
 
@@ -60,6 +61,7 @@ pub struct Look {
     /// Device pixels for each CSS pixel.
     pub ratio: f64,
     pub dark: bool,
+    pub layers: Layers,
 }
 
 /// Why a cell needs a new bitmap, the most urgent first.
@@ -67,7 +69,7 @@ pub struct Look {
 pub enum Need {
     /// The cell has no bitmap.
     Empty,
-    /// The bitmap shows less detail, another palette, or another pixel ratio.
+    /// The bitmap shows less detail, another palette, other layers, or another pixel ratio.
     Content,
     /// The bitmap shows another zoom, so that its lines are less sharp.
     Zoom,
@@ -109,6 +111,7 @@ impl<B> RasterCache<B> {
         };
         let look = raster.look;
         if look.dark != want.dark
+            || look.layers != want.layers
             || (look.ratio - want.ratio).abs() > f64::EPSILON
             || look.source.z < want.source.z
         {
@@ -207,6 +210,7 @@ fn children(cell: &VisibleTile) -> [VisibleTile; 4] {
 #[cfg(test)]
 mod tests {
     use tmaps_core::LatLon;
+    use tmaps_core::style::Layer;
 
     use super::*;
 
@@ -229,6 +233,7 @@ mod tests {
             zoom,
             ratio: 2.0,
             dark: false,
+            layers: Layers::ALL,
         }
     }
 
@@ -277,6 +282,18 @@ mod tests {
             ..look(tile, 12.0)
         };
         assert_eq!(cache.need(tile, dark, false), Some(Need::Content));
+    }
+
+    #[test]
+    fn bitmap_is_drawn_again_when_the_layers_change() {
+        let mut cache = RasterCache::default();
+        let tile = id(12, 1, 1);
+        cache.insert(tile, (), look(tile, 12.0), 1.0);
+        let without_roads = Look {
+            layers: Layers::ALL.toggled(Layer::Roads),
+            ..look(tile, 12.0)
+        };
+        assert_eq!(cache.need(tile, without_roads, true), Some(Need::Content));
     }
 
     #[test]

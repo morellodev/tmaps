@@ -71,7 +71,7 @@ home = "45.4642,9.19"
 
 tmaps keeps `config.toml.lock` next to the config file, so that two tmaps processes cannot lose a saved place. Without `units` and `lang`, tmaps uses the system locale. The map uses no colors when `NO_COLOR` is set.
 
-tmaps keeps the last view in `~/.local/state/tmaps/` and caches tiles in `~/.cache/tmaps/`.
+tmaps keeps the last view and the hidden map layers in `~/.local/state/tmaps/` and caches tiles in `~/.cache/tmaps/`.
 
 ## Data providers
 

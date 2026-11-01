@@ -8,6 +8,8 @@ pub struct Regions {
     pub steps: Option<ListRegion>,
     pub prompt_items: Option<ListRegion>,
     pub help: Option<Rect>,
+    pub layer_box: Option<Rect>,
+    pub layer_rows: Option<ListRegion>,
 }
 
 /// The items of a list on the screen.

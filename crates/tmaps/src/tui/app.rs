@@ -7,8 +7,11 @@ use crossterm::event::{
 };
 use lru::LruCache;
 use ratatui::layout::{Position, Rect};
-use tmaps_braille::{BrailleTile, DOTS_PER_CELL_X, DOTS_PER_CELL_Y, Grid, RouteLine, render};
+use tmaps_braille::{
+    BrailleTile, DOTS_PER_CELL_X, DOTS_PER_CELL_Y, Frame, Grid, RouteLine, render,
+};
 use tmaps_core::LatLon;
+use tmaps_core::style::{Layer, Layers};
 use tmaps_core::tiles::TileId;
 use tmaps_core::view::View;
 
@@ -33,6 +36,17 @@ const PLACE_ZOOM: f64 = 15.0;
 /// A deeper fit of a single building shows no context around it.
 const HOUSE_ZOOM: f64 = 17.0;
 const INFO_TIME: Duration = Duration::from_secs(3);
+/// The key that shows or hides each layer while the layer box is open.
+pub const LAYER_KEYS: [(char, Layer); Layer::ALL.len()] = [
+    ('1', Layer::Roads),
+    ('2', Layer::Transit),
+    ('3', Layer::Buildings),
+    ('4', Layer::Nature),
+    ('5', Layer::Boundaries),
+    ('6', Layer::Labels),
+];
+/// The keys of [`LAYER_KEYS`], for a hint.
+pub const LAYER_KEY_RANGE: &str = "1-6";
 
 pub struct App {
     view: View,
@@ -42,12 +56,13 @@ pub struct App {
     pending: HashSet<TileId>,
     failed: HashMap<TileId, Failure>,
     source_error: Option<String>,
-    help: bool,
+    overlay: Option<Overlay>,
     /// The help rows above the visible part.
     help_scroll: usize,
     /// The help rows that do not fit on the screen.
     help_overflow: usize,
     quit: bool,
+    layers: Layers,
     drag_from: Option<(u16, u16)>,
     regions: Regions,
     trip: Trip,
@@ -86,6 +101,13 @@ impl Failure {
     }
 }
 
+/// A box over the map. One box shows at a time.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Overlay {
+    Help,
+    Layers,
+}
+
 enum SourceState {
     Idle,
     Loading,
@@ -103,10 +125,11 @@ impl App {
             pending: HashSet::new(),
             failed: HashMap::new(),
             source_error: None,
-            help: false,
+            overlay: None,
             help_scroll: 0,
             help_overflow: 0,
             quit: false,
+            layers: Layers::ALL,
             drag_from: None,
             regions: Regions::default(),
             trip: Trip::default(),
@@ -126,8 +149,22 @@ impl App {
         self
     }
 
+    #[must_use]
+    pub fn with_layers(mut self, layers: Layers) -> Self {
+        self.layers = layers;
+        self
+    }
+
     pub fn view(&self) -> View {
         self.view
+    }
+
+    pub fn layers(&self) -> Layers {
+        self.layers
+    }
+
+    pub fn layers_open(&self) -> bool {
+        self.overlay == Some(Overlay::Layers)
     }
 
     pub fn set_map_size(&mut self, width: u16, height: u16) {
@@ -140,7 +177,7 @@ impl App {
     }
 
     pub fn help(&self) -> bool {
-        self.help
+        self.overlay == Some(Overlay::Help)
     }
 
     pub fn help_scroll(&self) -> usize {
@@ -414,15 +451,14 @@ impl App {
             _ => Vec::new(),
         };
         let cursor = cursor_cell(width, height);
-        render(
-            self.view,
-            width,
-            height,
+        let frame = Frame {
+            view: self.view,
+            columns: width,
+            rows: height,
             max_zoom,
-            &routes,
-            &[cursor],
-            |id| self.tiles.peek(&id),
-        )
+            layers: self.layers,
+        };
+        render(frame, &routes, &[cursor], |id| self.tiles.peek(&id))
     }
 
     fn max_zoom(&self) -> Option<u8> {
@@ -443,27 +479,34 @@ impl App {
         if self.prompt.is_some() {
             return self.on_prompt_key(key);
         }
+        let control = key
+            .modifiers
+            .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT);
+        if self.layers_open()
+            && !control
+            && let KeyCode::Char(key) = key.code
+            && let Some(&(_, layer)) = LAYER_KEYS.iter().find(|(each, _)| *each == key)
+        {
+            self.layers = self.layers.toggled(layer);
+            return true;
+        }
         let shift = key.modifiers.contains(KeyModifiers::SHIFT);
         let step = if shift { FAST_PAN_STEP } else { PAN_STEP };
         match key.code {
             KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => self.quit = true,
-            _ if key
-                .modifiers
-                .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT) =>
-            {
-                return false;
-            }
-            KeyCode::Char('q') if self.help => self.help = false,
+            _ if control => return false,
+            KeyCode::Char('q') if self.overlay.is_some() => self.overlay = None,
             KeyCode::Char('q') => self.quit = true,
             KeyCode::Char('?') => {
-                self.help = !self.help;
+                self.toggle_overlay(Overlay::Help);
                 self.help_scroll = 0;
             }
-            KeyCode::Esc => self.help = false,
-            KeyCode::Up | KeyCode::Char('k') if self.help && self.help_overflow > 0 => {
+            KeyCode::Esc => self.overlay = None,
+            KeyCode::Char('v') => self.toggle_overlay(Overlay::Layers),
+            KeyCode::Up | KeyCode::Char('k') if self.help() && self.help_overflow > 0 => {
                 self.scroll_help(-1);
             }
-            KeyCode::Down | KeyCode::Char('j') if self.help && self.help_overflow > 0 => {
+            KeyCode::Down | KeyCode::Char('j') if self.help() && self.help_overflow > 0 => {
                 self.scroll_help(1);
             }
             KeyCode::Left | KeyCode::Char('h') => self.pan_screens(-step, 0.0),
@@ -605,10 +648,14 @@ impl App {
         self.request_search();
     }
 
-    /// Help covers the prompt, so it closes.
+    /// The prompt takes the keys, so the overlay closes.
     fn open(&mut self, prompt: Prompt) {
-        self.help = false;
+        self.overlay = None;
         self.prompt = Some(prompt);
+    }
+
+    fn toggle_overlay(&mut self, overlay: Overlay) {
+        self.overlay = (self.overlay != Some(overlay)).then_some(overlay);
     }
 
     fn close_prompt(&mut self) {
@@ -694,10 +741,19 @@ impl App {
             return self.on_prompt_mouse(mouse.kind, position);
         }
         let over = |area: Option<Rect>| area.is_some_and(|area| area.contains(position));
-        let on_help = self.help && over(self.regions.help);
+        let on_help = self.help() && over(self.regions.help);
         let scrolls_help = on_help && self.help_overflow > 0;
         let on_panel = !on_help && over(self.regions.panel);
         let on_map = !scrolls_help && self.regions.map.contains(position);
+        let on_layer_box = self.layers_open() && over(self.regions.layer_box);
+        let layer_row = self
+            .regions
+            .layer_rows
+            .as_ref()
+            .filter(|_| on_layer_box)
+            .and_then(|rows| rows.item_at(position))
+            .and_then(|index| LAYER_KEYS.get(index))
+            .map(|&(_, layer)| layer);
         match mouse.kind {
             MouseEventKind::ScrollUp if scrolls_help => return self.scroll_help(-1),
             MouseEventKind::ScrollDown if scrolls_help => return self.scroll_help(1),
@@ -705,6 +761,13 @@ impl App {
             MouseEventKind::ScrollDown if on_panel => self.show_step(1),
             MouseEventKind::ScrollUp if on_map => self.view = self.view.zoom_by(1.0),
             MouseEventKind::ScrollDown if on_map => self.view = self.view.zoom_by(-1.0),
+            MouseEventKind::Down(MouseButton::Left) if on_layer_box => {
+                self.drag_from = None;
+                let Some(layer) = layer_row else {
+                    return false;
+                };
+                self.layers = self.layers.toggled(layer);
+            }
             MouseEventKind::Down(MouseButton::Left) => {
                 let drags = on_map && !on_help;
                 self.drag_from = drags.then_some((mouse.column, mouse.row));
@@ -1079,6 +1142,66 @@ mod tests {
         });
         app.handle(&mouse(MouseEventKind::ScrollUp, 30, 10));
         assert_eq!(app.view(), View::new(milan(), 15.0));
+    }
+
+    fn with_layer_box(app: &mut App) {
+        app.set_regions(Regions {
+            layer_box: Some(Rect::new(78, 0, 20, 7)),
+            layer_rows: Some(ListRegion {
+                area: Rect::new(80, 1, 16, 5),
+                offset: 0,
+                heights: vec![1; LAYER_KEYS.len()],
+            }),
+            ..app.regions.clone()
+        });
+    }
+
+    #[test]
+    fn click_on_a_layer_row_hides_its_layer() {
+        let mut app = ready_app();
+        key(&mut app, KeyCode::Char('v'));
+        with_layer_box(&mut app);
+        app.handle(&mouse(MouseEventKind::Down(MouseButton::Left), 85, 3));
+        assert!(!app.layers().contains(Layer::Buildings));
+    }
+
+    #[test]
+    fn click_on_a_layer_row_does_not_drag_the_map() {
+        let mut app = ready_app();
+        key(&mut app, KeyCode::Char('v'));
+        with_layer_box(&mut app);
+        app.handle(&mouse(MouseEventKind::Down(MouseButton::Left), 85, 3));
+        app.handle(&mouse(MouseEventKind::Drag(MouseButton::Left), 60, 20));
+        assert_eq!(app.view(), View::new(milan(), 14.0));
+    }
+
+    #[test]
+    fn drag_from_the_layer_box_border_keeps_the_view() {
+        let mut app = ready_app();
+        key(&mut app, KeyCode::Char('v'));
+        with_layer_box(&mut app);
+        app.handle(&mouse(MouseEventKind::Down(MouseButton::Left), 78, 0));
+        app.handle(&mouse(MouseEventKind::Drag(MouseButton::Left), 60, 20));
+        assert_eq!(app.view(), View::new(milan(), 14.0));
+    }
+
+    #[test]
+    fn click_on_a_layer_row_ends_a_drag_without_a_release() {
+        let mut app = ready_app();
+        app.handle(&mouse(MouseEventKind::Down(MouseButton::Left), 30, 20));
+        key(&mut app, KeyCode::Char('v'));
+        with_layer_box(&mut app);
+        app.handle(&mouse(MouseEventKind::Down(MouseButton::Left), 85, 3));
+        app.handle(&mouse(MouseEventKind::Drag(MouseButton::Left), 60, 20));
+        assert_eq!(app.view(), View::new(milan(), 14.0));
+    }
+
+    #[test]
+    fn click_where_a_closed_layer_box_was_keeps_the_layers() {
+        let mut app = ready_app();
+        with_layer_box(&mut app);
+        app.handle(&mouse(MouseEventKind::Down(MouseButton::Left), 85, 3));
+        assert_eq!(app.layers(), Layers::ALL);
     }
 
     #[test]
@@ -1546,6 +1669,69 @@ mod tests {
         key(&mut app, KeyCode::Char('?'));
         key(&mut app, KeyCode::Down);
         assert_ne!(app.view(), View::new(milan(), 14.0));
+    }
+
+    #[test]
+    fn v_opens_the_layer_box() {
+        let mut app = ready_app();
+        key(&mut app, KeyCode::Char('v'));
+        assert!(app.layers_open());
+    }
+
+    #[test]
+    fn layer_key_hides_its_layer_while_the_layer_box_is_open() {
+        let mut app = ready_app();
+        key(&mut app, KeyCode::Char('v'));
+        key(&mut app, KeyCode::Char('2'));
+        assert_eq!(app.layers(), Layers::ALL.toggled(Layer::Transit));
+    }
+
+    #[test]
+    fn layer_key_selects_the_mode_while_the_layer_box_is_closed() {
+        let mut app = ready_app();
+        key(&mut app, KeyCode::Char('2'));
+        assert_eq!((app.layers(), app.trip().mode()), (Layers::ALL, Mode::Bike));
+    }
+
+    #[test]
+    fn six_hides_the_labels_while_the_layer_box_is_open() {
+        let mut app = ready_app();
+        key(&mut app, KeyCode::Char('v'));
+        key(&mut app, KeyCode::Char('6'));
+        assert!(!app.layers().contains(Layer::Labels));
+    }
+
+    #[test]
+    fn layer_key_range_names_the_first_and_last_layer_keys() {
+        let keys = LAYER_KEYS.map(|(key, _)| key);
+        assert_eq!(
+            LAYER_KEY_RANGE,
+            format!("{}-{}", keys[0], keys[keys.len() - 1])
+        );
+    }
+
+    #[test]
+    fn esc_closes_the_layer_box() {
+        let mut app = ready_app();
+        key(&mut app, KeyCode::Char('v'));
+        key(&mut app, KeyCode::Esc);
+        assert!(!app.layers_open());
+    }
+
+    #[test]
+    fn help_replaces_the_layer_box() {
+        let mut app = ready_app();
+        key(&mut app, KeyCode::Char('v'));
+        key(&mut app, KeyCode::Char('?'));
+        assert!(app.help() && !app.layers_open());
+    }
+
+    #[test]
+    fn search_closes_the_layer_box() {
+        let mut app = ready_app();
+        key(&mut app, KeyCode::Char('v'));
+        key(&mut app, KeyCode::Char('/'));
+        assert!(!app.layers_open());
     }
 
     #[test]

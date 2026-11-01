@@ -1,6 +1,6 @@
 use tmaps_core::LatLon;
 use tmaps_core::scene::{Rect, Scene, ScreenPoint, clip as clip_segment};
-use tmaps_core::style::Class;
+use tmaps_core::style::{Class, Layers};
 use tmaps_core::tiles::TileId;
 use tmaps_core::view::View;
 
@@ -17,21 +17,36 @@ pub struct RouteLine<'a> {
     pub selected: bool,
 }
 
-/// Draws the view on a grid of `columns` × `rows` cells, with the routes over the map. Labels
-/// leave the cells in `keep_free` free, for example the cell of a cursor. `tile` returns a loaded
-/// tile, or `None` for a tile that is not loaded yet. The nearest loaded ancestor fills the area
-/// of that tile, else the area stays empty.
+/// What [`render`] draws: the view, on a grid of `columns` × `rows` cells.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Frame {
+    pub view: View,
+    pub columns: u16,
+    pub rows: u16,
+    /// The highest zoom of the tile set.
+    pub max_zoom: u8,
+    pub layers: Layers,
+}
+
+/// Draws the frame, with the routes over the map. Labels leave the cells in `keep_free` free,
+/// for example the cell of a cursor. `tile` returns a loaded tile, or `None` for a tile that is
+/// not loaded yet. The nearest loaded ancestor fills the area of that tile, else the area stays
+/// empty.
 pub fn render<'a>(
-    view: View,
-    columns: u16,
-    rows: u16,
-    max_zoom: u8,
+    frame: Frame,
     routes: &[RouteLine<'_>],
     keep_free: &[(u16, u16)],
     tile: impl Fn(TileId) -> Option<&'a BrailleTile>,
 ) -> Grid {
-    let mut grid = Grid::new(columns, rows);
-    let scene = Scene::new(view, grid.width_dots(), grid.height_dots(), max_zoom, tile);
+    let mut grid = Grid::new(frame.columns, frame.rows);
+    let scene = Scene::new(
+        frame.view,
+        grid.width_dots(),
+        grid.height_dots(),
+        frame.max_zoom,
+        frame.layers,
+        tile,
+    );
     let mut crossings = Vec::new();
     // Class by class over all tiles, so that a tile does not cover the lines of its neighbor.
     for class in Class::ALL {
@@ -274,7 +289,14 @@ mod tests {
         let empty = BrailleTile::default();
         let view = View::new(LatLon::new(0.0, 0.0).unwrap(), 1.0);
         let north_west = TileId { z: 1, x: 0, y: 0 };
-        let grid = render(view, 8, 4, 14, &[], &[], |id| match id.z {
+        let frame = Frame {
+            view,
+            columns: 8,
+            rows: 4,
+            max_zoom: 14,
+            layers: Layers::ALL,
+        };
+        let grid = render(frame, &[], &[], |id| match id.z {
             0 => Some(&water),
             _ => (id == north_west).then_some(&empty),
         });
