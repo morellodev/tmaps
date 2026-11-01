@@ -1,6 +1,8 @@
 [package]
 name = "tmaps-core"
 description = "The map engine of tmaps: geo types, vector tiles, projection, and labels, with no I/O"
+keywords = ["openstreetmap", "maps", "vector-tiles", "mvt", "projection"]
+categories = ["science::geo", "wasm"]
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

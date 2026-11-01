@@ -14,3 +14,7 @@ pub use self::tile::BrailleTile;
 /// dots are about square in common terminal fonts.
 pub const DOTS_PER_CELL_X: u16 = 2;
 pub const DOTS_PER_CELL_Y: u16 = 4;
+
+#[cfg(doctest)]
+#[doc = include_str!("../README.md")]
+struct ReadmeDoctests;

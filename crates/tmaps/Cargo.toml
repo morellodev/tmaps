@@ -6,6 +6,9 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 description = "Terminal maps with a route planner, and a CLI for AI agents"
+readme = "../../README.md"
+keywords = ["openstreetmap", "maps", "terminal", "tui", "routing"]
+categories = ["command-line-utilities", "science::geo"]
 
 [dependencies]
 clap = { version = "4", features = ["derive", "env"] }
