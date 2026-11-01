@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
-use js_sys::{Array, Uint8Array};
-use tmaps_core::label::LabelClass;
+use js_sys::{Array, Reflect, Uint8Array};
+use tmaps_core::label::{LabelCandidate, LabelClass};
 use tmaps_core::scene::{Rect, Scene, ScreenPoint};
 use tmaps_core::style::{Class, Layer, Layers};
 use tmaps_core::tiles::{TileId, TileSet};
@@ -15,7 +15,7 @@ use web_sys::{
 
 use crate::cache::TileCache;
 use crate::fade::Fades;
-use crate::labels::{self, Candidate};
+use crate::labels::{self, Candidate, Size};
 use crate::line_text::Run;
 use crate::paint::{Line, Palette};
 use crate::raster::{self, BLEED, Look, RasterCache, Style};
@@ -30,9 +30,9 @@ const CSS_PER_UNIT: f64 = 2.0;
 /// placement takes milliseconds. Between placements, the labels move with the map.
 const PLACE_MS: f64 = 100.0;
 
-/// The most label widths that the map keeps for each label class. When a class has more, the map
+/// The most label sizes that the map keeps for each label class. When a class has more, the map
 /// removes them and measures each text again.
-const MAX_WIDTHS: usize = 16_384;
+const MAX_SIZES: usize = 4096;
 
 /// The longest time that one frame draws cell bitmaps, in milliseconds. A frame starts a cell only
 /// if the mean time of a cell fits. While the zoom moves, a cell that does not fit waits, and a
@@ -70,7 +70,7 @@ pub struct WebMap {
     route: Vec<LatLon>,
     dark: bool,
     layers: Layers,
-    widths: HashMap<LabelClass, HashMap<String, f64>>,
+    sizes: Sizes,
     fades: Fades<Spot>,
     placement: Option<Placement>,
     /// A tile came after the last placement of the labels.
@@ -85,11 +85,15 @@ struct Placement {
     size: (f64, f64),
 }
 
+/// The [`Size`] of each label text, by class and by whether the label is on a line.
+type Sizes = HashMap<(LabelClass, bool), HashMap<String, Size>>;
+
 /// The position of a label on the map, its position on the screen in the last frame, and the
-/// parts of its text around that position.
+/// parts of its text around that position at the zoom of its placement.
 struct Spot {
     point: LatLon,
     screen: ScreenPoint,
+    zoom: f64,
     runs: Vec<Run>,
 }
 
@@ -114,7 +118,7 @@ impl WebMap {
             route: Vec::new(),
             dark: false,
             layers: Layers::ALL,
-            widths: HashMap::new(),
+            sizes: Sizes::new(),
             fades: Fades::default(),
             placement: None,
             tiles_added: false,
@@ -362,7 +366,7 @@ impl WebMap {
                 &scene,
                 units,
                 &mut self.fades,
-                &mut self.widths,
+                &mut self.sizes,
                 palette,
             );
             self.placement = Some(Placement {
@@ -373,7 +377,7 @@ impl WebMap {
             self.tiles_added = false;
         }
         let fading = self.fades.step(now);
-        draw_labels(context, &self.fades, palette, ratio)?;
+        draw_labels(context, &self.fades, palette, ratio, view.zoom())?;
         Ok(fading || stale && !due || cells_wait)
     }
 }
@@ -451,7 +455,7 @@ fn place_labels(
     scene: &Scene<'_, CanvasTile>,
     (units_x, units_y): (f64, f64),
     fades: &mut Fades<Spot>,
-    widths: &mut HashMap<LabelClass, HashMap<String, f64>>,
+    sizes: &mut Sizes,
     palette: Palette,
 ) {
     let shown = fades
@@ -469,10 +473,7 @@ fn place_labels(
             }),
         Rect::screen(units_x * CSS_PER_UNIT, units_y * CSS_PER_UNIT),
         &shown,
-        |text, class| {
-            let width = measure(context, widths, palette, text, class)?;
-            Some((width, f64::from(palette.text(class).size)))
-        },
+        |label| measure(context, sizes, palette, label),
     );
     let view = scene.view();
     fades.place(placed.into_iter().map(|label| {
@@ -485,6 +486,7 @@ fn place_labels(
         let at = Spot {
             point,
             screen: (label.x, label.y),
+            zoom: view.zoom(),
             runs: label.runs,
         };
         (label.text, label.class, at, label.kept)
@@ -497,6 +499,7 @@ fn draw_labels(
     fades: &Fades<Spot>,
     palette: Palette,
     ratio: f64,
+    zoom: f64,
 ) -> Result<(), JsValue> {
     context.set_text_align("center");
     context.set_text_baseline("middle");
@@ -508,6 +511,8 @@ fn draw_labels(
         context.set_global_alpha(fade.opacity);
         context.set_font(text.font);
         context.set_fill_style_str(text.color);
+        // Between placements, the line under a label scales with the zoom, and its text does not.
+        let scale = (zoom - fade.at.zoom).exp2();
         // All halos go first, so that the halo of a run does not cover the text of the run
         // next to it.
         for fill in [false, true] {
@@ -515,8 +520,11 @@ fn draw_labels(
                 let Some(part) = label.get(run.range.clone()) else {
                     continue;
                 };
+                // web-sys has no setter for `direction`.
+                let direction = if run.right_to_left { "rtl" } else { "ltr" };
+                Reflect::set(context, &"direction".into(), &direction.into())?;
                 let (sin, cos) = run.angle.sin_cos();
-                let (dx, dy) = run.offset;
+                let (dx, dy) = (run.offset.0 * scale, run.offset.1 * scale);
                 context.set_transform(
                     ratio * cos,
                     ratio * sin,
@@ -879,25 +887,33 @@ fn stroke(context: &CanvasRenderingContext2d, path: &Path2d, line: Line) {
     context.stroke_with_path(path);
 }
 
-/// The width of `text` in its label font. `measureText` is slow, so each width is measured once.
+/// The size of the text of `label` in its label font. `measureText` is slow, so each text is
+/// measured once.
 fn measure(
     context: &CanvasRenderingContext2d,
-    widths: &mut HashMap<LabelClass, HashMap<String, f64>>,
+    sizes: &mut Sizes,
     palette: Palette,
-    text: &str,
-    class: LabelClass,
-) -> Option<f64> {
-    let widths = widths.entry(class).or_default();
-    if let Some(&width) = widths.get(text) {
-        return Some(width);
+    label: &LabelCandidate,
+) -> Option<Size> {
+    let on_line = labels::on_line(label);
+    let sizes = sizes.entry((label.class, on_line)).or_default();
+    if let Some(size) = sizes.get(&label.text) {
+        return Some(size.clone());
     }
-    if widths.len() >= MAX_WIDTHS {
-        widths.clear();
+    if sizes.len() >= MAX_SIZES {
+        sizes.clear();
     }
-    context.set_font(palette.text(class).font);
-    let width = context.measure_text(text).ok()?.width();
-    widths.insert(text.to_owned(), width);
-    Some(width)
+    let text = palette.text(label.class);
+    context.set_font(text.font);
+    let width_of = |part: &str| Some(context.measure_text(part).ok()?.width());
+    let height = f64::from(text.size);
+    let size = if on_line {
+        Size::measure(&label.text, height, width_of)?
+    } else {
+        Size::of_point(&label.text, width_of(&label.text)?, height)
+    };
+    sizes.insert(label.text.clone(), size.clone());
+    Some(size)
 }
 
 fn device_pixels(css: f64) -> u32 {
