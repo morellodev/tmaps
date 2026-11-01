@@ -56,12 +56,17 @@ jobs:
         with:
           cache: true
           require-lockfile: true
+      # rust:<rust-version>-slim follows patch releases, and a new rustc makes the cached build stale.
+      - id: rustc
+        run: |
+          rust_version=$(sed -n 's/^rust-version = "\(.*\)"$/\1/p' Cargo.toml)
+          echo "version=$(docker run --rm "rust:${rust_version}-slim" rustc --version | cut -d ' ' -f 2)" >> "$GITHUB_OUTPUT"
       # The wasm build runs in Docker, so rust-cache cannot see its cargo cache.
       - id: wasm-cache
         uses: actions/cache/restore@v5
         with:
           path: ${{ runner.temp }}/tmaps-canvas-cache
-          key: canvas-wasm-${{ runner.os }}-${{ hashFiles('Cargo.lock', '**/Cargo.toml') }}
+          key: canvas-wasm-${{ runner.os }}-rustc-${{ steps.rustc.outputs.version }}-${{ hashFiles('Cargo.lock', '**/Cargo.toml') }}
       - run: pnpm --filter tmaps-canvas-demo build
         env:
           TMAPS_CANVAS_CACHE_DIR: ${{ runner.temp }}/tmaps-canvas-cache
