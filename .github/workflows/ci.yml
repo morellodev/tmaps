@@ -14,39 +14,62 @@ concurrency:
 
 env:
   CARGO_TERM_COLOR: always
+  # Panic backtraces keep their file and line numbers, with less debug info to build and cache.
+  CARGO_PROFILE_DEV_DEBUG: line-tables-only
 
 jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - &checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
-      - uses: Swatinem/rust-cache@v2
+      - &rust-cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          # Pull requests restore the cache of main, but do not save their own, so they cannot
+          # evict it from the 10 GB of the repository.
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - run: cargo fmt --all -- --check
       - run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
 
   wasm:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - *checkout
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-unknown-unknown
-      - uses: Swatinem/rust-cache@v2
+      - *rust-cache
       - run: cargo check -p tmaps-core -p tmaps-braille --target wasm32-unknown-unknown --locked
       - run: cargo build -p tmaps-canvas --target wasm32-unknown-unknown --release --locked
 
   canvas-demo:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - *checkout
       - uses: pnpm/setup@v3
         with:
           cache: true
           require-lockfile: true
+      # The wasm build runs in Docker, so rust-cache cannot see its cargo cache.
+      - id: wasm-cache
+        uses: actions/cache/restore@v5
+        with:
+          path: ${{ runner.temp }}/tmaps-canvas-cache
+          key: canvas-wasm-${{ runner.os }}-${{ hashFiles('Cargo.lock', '**/Cargo.toml') }}
       - run: pnpm --filter tmaps-canvas-demo build
+        env:
+          TMAPS_CANVAS_CACHE_DIR: ${{ runner.temp }}/tmaps-canvas-cache
+      - if: github.ref == 'refs/heads/main' && steps.wasm-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: ${{ runner.temp }}/tmaps-canvas-cache
+          key: ${{ steps.wasm-cache.outputs.cache-primary-key }}
 
   test:
     strategy:
@@ -62,9 +85,9 @@ jobs:
             toolchain: "1.96"
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - *checkout
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: ${{ matrix.toolchain }}
-      - uses: Swatinem/rust-cache@v2
+      - *rust-cache
       - run: cargo test --workspace --locked

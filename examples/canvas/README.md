@@ -17,7 +17,7 @@ To build the page into `dist/` and type-check it, run `pnpm build`. To serve the
 
 ## Docker
 
-The build uses a `tmaps-canvas-wasm` Docker image with the wasm target and the `wasm-bindgen-cli` version from `Cargo.lock`, because the CLI and the crate must have the same version. Docker makes the image again only when one of these versions or `plugins/wasm.Dockerfile` changes. Two Docker volumes, `tmaps-canvas-target` and `tmaps-canvas-registry`, keep the build cache between runs.
+The build uses a `tmaps-canvas-wasm` Docker image with the wasm target and the `wasm-bindgen-cli` version from `Cargo.lock`, because the CLI and the crate must have the same version. Docker makes the image again only when one of these versions or `plugins/wasm.Dockerfile` changes. Two Docker volumes, `tmaps-canvas-target` and `tmaps-canvas-registry`, keep the build cache between runs. To keep the cache in a host folder instead, set `TMAPS_CANVAS_CACHE_DIR` to that folder. CI uses this folder to save the cache with `actions/cache`.
 
 Docker keeps the image of each earlier version. To free the disk space, run these commands:
 

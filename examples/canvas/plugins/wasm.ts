@@ -117,19 +117,39 @@ function runArgs(image: string) {
     `wasm-bindgen --target web --out-dir /out ${wasmFile}`,
     `chown -R ${uid}:${gid} /out`,
   ];
-  // The named volumes keep the build cache and the crate downloads between runs. As PID 1, sh
-  // ignores SIGINT and SIGTERM, so tini forwards them to the whole process group.
+  // As PID 1, sh ignores SIGINT and SIGTERM, so tini forwards them to the whole process group.
   return [
     "run", "--rm", "--init",
     "-e", "TINI_KILL_PROCESS_GROUP=1",
     "--mount", mount("bind", REPO, "/src", "readonly"),
     "--mount", mount("bind", OUT_DIR, "/out"),
-    "--mount", mount("volume", "tmaps-canvas-target", CONTAINER_TARGET_DIR),
-    "--mount", mount("volume", "tmaps-canvas-registry", "/usr/local/cargo/registry"),
+    ...cacheMounts().flatMap((cache) => ["--mount", cache]),
     "-w", "/src",
     "-e", `CARGO_TARGET_DIR=${CONTAINER_TARGET_DIR}`,
     image,
     "sh", "-c", steps.join(" && "),
+  ];
+}
+
+// The mounts keep the build cache and the crate downloads between runs. Named volumes are not
+// visible to the host user, so CI sets TMAPS_CANVAS_CACHE_DIR to a folder that actions/cache saves.
+function cacheMounts() {
+  const registry = "/usr/local/cargo/registry";
+  const hostDir = process.env.TMAPS_CANVAS_CACHE_DIR;
+  if (!hostDir) {
+    return [
+      mount("volume", "tmaps-canvas-target", CONTAINER_TARGET_DIR),
+      mount("volume", "tmaps-canvas-registry", registry),
+    ];
+  }
+  const folder = (name: string) => {
+    const path = resolve(hostDir, name);
+    mkdirSync(path, { recursive: true });
+    return path;
+  };
+  return [
+    mount("bind", folder("target"), CONTAINER_TARGET_DIR),
+    mount("bind", folder("registry"), registry),
   ];
 }
 
