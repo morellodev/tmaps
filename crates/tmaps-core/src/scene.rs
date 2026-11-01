@@ -1,6 +1,6 @@
 use crate::label::{self, LabelCandidate};
 use crate::mvt::{self, Geometry};
-use crate::style::{self, Class, classify};
+use crate::style::{self, Class, Layers, classify};
 use crate::tiles::TileId;
 use crate::view::{View, VisibleTile};
 use crate::{LatLon, Result};
@@ -210,6 +210,7 @@ pub struct Scene<'a, T> {
     view: View,
     width: f64,
     height: f64,
+    layers: Layers,
     tiles: Vec<SceneTile<'a, T>>,
 }
 
@@ -235,12 +236,14 @@ impl<T> Copy for SceneTile<'_, T> {}
 
 impl<'a, T: AsRef<PreparedTile>> Scene<'a, T> {
     /// `tile` returns a loaded tile, or `None` for a tile that is not loaded yet. The nearest
-    /// loaded ancestor fills the area of that tile, else the area stays empty.
+    /// loaded ancestor fills the area of that tile, else the area stays empty. The scene gives
+    /// only the shapes and labels that `layers` shows.
     pub fn new(
         view: View,
         width: f64,
         height: f64,
         max_zoom: u8,
+        layers: Layers,
         tile: impl Fn(TileId) -> Option<&'a T>,
     ) -> Self {
         let screen = Rect::screen(width, height);
@@ -269,6 +272,7 @@ impl<'a, T: AsRef<PreparedTile>> Scene<'a, T> {
             view,
             width,
             height,
+            layers,
             tiles,
         }
     }
@@ -293,7 +297,12 @@ impl<'a, T: AsRef<PreparedTile>> Scene<'a, T> {
     /// the rings of one shape together, so that holes stay empty.
     pub fn shapes(&self, class: Class) -> impl Iterator<Item = (&SceneTile<'a, T>, &'a Shape)> {
         let zoom = self.view.zoom();
-        self.tiles.iter().flat_map(move |scene_tile| {
+        let tiles = if self.layers.shows(class) {
+            self.tiles.as_slice()
+        } else {
+            &[]
+        };
+        tiles.iter().flat_map(move |scene_tile| {
             let tile: &'a PreparedTile = scene_tile.tile.as_ref();
             tile.shapes[class.index()]
                 .iter()
@@ -307,7 +316,7 @@ impl<'a, T: AsRef<PreparedTile>> Scene<'a, T> {
     /// A renderer that places each text once keeps the first candidate of that text.
     #[must_use]
     pub fn labels(&self) -> Vec<(&SceneTile<'a, T>, usize, &'a LabelCandidate)> {
-        let zoom = self.view.zoom();
+        let (zoom, layers) = (self.view.zoom(), self.layers);
         let mut labels: Vec<_> = self
             .tiles
             .iter()
@@ -319,6 +328,7 @@ impl<'a, T: AsRef<PreparedTile>> Scene<'a, T> {
                     .enumerate()
                     .filter(move |(_, candidate)| {
                         (candidate.min_zoom..candidate.max_zoom).contains(&zoom)
+                            && layers.shows_label(candidate.class)
                     })
                     .map(move |(index, candidate)| (scene_tile, index, candidate))
             })
@@ -402,6 +412,7 @@ pub fn clip(a: ScreenPoint, b: ScreenPoint, rect: Rect) -> Option<(ScreenPoint, 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::style::Layer;
 
     fn square(start: f64, end: f64) -> Rect {
         Rect {
@@ -438,7 +449,7 @@ mod tests {
         let (root, empty) = (PreparedTile::default(), PreparedTile::default());
         let view = View::new(LatLon::new(0.0, 0.0).unwrap(), 1.0);
         let north_west = TileId { z: 1, x: 0, y: 0 };
-        let scene = Scene::new(view, 16.0, 16.0, 14, |id| match id.z {
+        let scene = Scene::new(view, 16.0, 16.0, 14, Layers::ALL, |id| match id.z {
             0 => Some(&root),
             _ => (id == north_west).then_some(&empty),
         });
@@ -504,13 +515,70 @@ mod tests {
             x: 512,
             y: 512,
         };
-        let scene = Scene::new(view, 16.0, 16.0, 14, |id| (id == loaded).then_some(&tile));
+        let scene = Scene::new(view, 16.0, 16.0, 14, Layers::ALL, |id| {
+            (id == loaded).then_some(&tile)
+        });
         let texts: Vec<&str> = scene
             .labels()
             .into_iter()
             .map(|(_, _, candidate)| candidate.text.as_str())
             .collect();
         assert_eq!(texts, ["Milano", "Bergamo", "Pavia", "Monza"]);
+    }
+
+    fn rail_and_road_name() -> PreparedTile {
+        let line = || {
+            Geometry::Lines(vec![vec![
+                mvt::Point { x: 0, y: 0 },
+                mvt::Point { x: 4096, y: 0 },
+            ]])
+        };
+        let class = |name: &str| ("class", mvt::Value::String(name.to_owned()));
+        let rail =
+            mvt::Layer::with_features("transportation", 4096, vec![(line(), vec![class("rail")])]);
+        let road_name = mvt::Layer::with_features(
+            "transportation_name",
+            4096,
+            vec![(
+                line(),
+                vec![
+                    class("primary"),
+                    ("name", mvt::Value::String("Via Milano".to_owned())),
+                ],
+            )],
+        );
+        PreparedTile::new(
+            &mvt::Tile {
+                layers: vec![rail, road_name],
+            },
+            "it",
+        )
+    }
+
+    #[test]
+    fn scene_gives_no_shapes_of_a_hidden_layer() {
+        let tile = rail_and_road_name();
+        let view = View::new(LatLon::new(0.0, 0.0).unwrap(), 0.0);
+        let layers = Layers::ALL.toggled(Layer::Transit);
+        let scene = Scene::new(view, 16.0, 16.0, 0, layers, |_| Some(&tile));
+        assert_eq!(scene.shapes(Class::Rail).count(), 0);
+    }
+
+    #[test]
+    fn scene_gives_the_shapes_of_a_shown_layer() {
+        let tile = rail_and_road_name();
+        let view = View::new(LatLon::new(0.0, 0.0).unwrap(), 0.0);
+        let scene = Scene::new(view, 16.0, 16.0, 0, Layers::ALL, |_| Some(&tile));
+        assert_eq!(scene.shapes(Class::Rail).count(), 1);
+    }
+
+    #[test]
+    fn scene_gives_no_road_labels_when_roads_are_hidden() {
+        let tile = rail_and_road_name();
+        let view = View::new(LatLon::new(0.0, 0.0).unwrap(), 0.0);
+        let layers = Layers::ALL.toggled(Layer::Roads);
+        let scene = Scene::new(view, 16.0, 16.0, 0, layers, |_| Some(&tile));
+        assert!(scene.labels().is_empty());
     }
 
     #[test]

@@ -64,6 +64,20 @@
         color: inherit;
       }
 
+      .layers {
+        align-self: start;
+        justify-self: end;
+        display: grid;
+        margin: 10px;
+        padding: 5px 10px;
+        border: 0;
+        background: var(--panel);
+      }
+
+      .layers legend {
+        font-weight: 600;
+      }
+
       #status.error {
         align-self: start;
         justify-self: start;
@@ -91,6 +105,15 @@
     <canvas id="map" tabindex="0" role="application" aria-roledescription="map"
       aria-label="Map. Drag or use the arrow keys to move. Scroll or use the plus and minus keys to zoom."
       aria-describedby="status"></canvas>
+    <fieldset id="layers" class="layers">
+      <legend>Layers</legend>
+      <label><input type="checkbox" value="roads" checked> Roads</label>
+      <label><input type="checkbox" value="transit" checked> Transit</label>
+      <label><input type="checkbox" value="buildings" checked> Buildings</label>
+      <label><input type="checkbox" value="nature" checked> Nature</label>
+      <label><input type="checkbox" value="boundaries" checked> Boundaries</label>
+      <label><input type="checkbox" value="labels" checked> Labels</label>
+    </fieldset>
     <output id="status" class="visually-hidden">Loading the map…</output>
     <small id="attribution" class="attribution"></small>
   </body>

@@ -3,7 +3,7 @@ use std::collections::{HashMap, HashSet};
 use js_sys::{Array, Uint8Array};
 use tmaps_core::label::LabelClass;
 use tmaps_core::scene::{Rect, Scene, ScreenPoint};
-use tmaps_core::style::Class;
+use tmaps_core::style::{Class, Layer, Layers};
 use tmaps_core::tiles::{TileId, TileSet};
 use tmaps_core::view::{TILE_SIZE, View, VisibleTile};
 use tmaps_core::{LatLon, PreparedTile};
@@ -66,8 +66,10 @@ pub struct WebMap {
     /// The zoom of the view, and the time in milliseconds when the view got it.
     zoom_since: Option<(f64, f64)>,
     drawn_dark: Option<bool>,
+    drawn_layers: Option<Layers>,
     route: Vec<LatLon>,
     dark: bool,
+    layers: Layers,
     widths: HashMap<LabelClass, HashMap<String, f64>>,
     fades: Fades<Spot>,
     placement: Option<Placement>,
@@ -108,8 +110,10 @@ impl WebMap {
             painter: None,
             zoom_since: None,
             drawn_dark: None,
+            drawn_layers: None,
             route: Vec::new(),
             dark: false,
+            layers: Layers::ALL,
             widths: HashMap::new(),
             fades: Fades::default(),
             placement: None,
@@ -176,6 +180,21 @@ impl WebMap {
 
     pub fn set_dark(&mut self, dark: bool) {
         self.dark = dark;
+    }
+
+    /// Shows or hides a layer of the map: `roads`, `transit`, `buildings`, `nature`,
+    /// `boundaries`, or `labels`. All layers show at the start.
+    ///
+    /// # Errors
+    ///
+    /// If `name` is not the name of a layer.
+    pub fn set_layer(&mut self, name: &str, visible: bool) -> Result<(), JsValue> {
+        let layer: Layer = name.parse().map_err(js)?;
+        if self.layers.contains(layer) != visible {
+            self.layers = self.layers.toggled(layer);
+            self.placement = None;
+        }
+        Ok(())
     }
 
     /// Sets the route to draw over the map, as `[lat, lon, lat, lon, …]`. An empty array removes
@@ -297,6 +316,7 @@ impl WebMap {
                 ratio,
                 palette,
                 dark: self.dark,
+                layers: self.layers,
                 settled,
                 restyled,
             },
@@ -316,14 +336,7 @@ impl WebMap {
             stroke(context, &path, palette.route_line(true));
         }
         let view = self.view;
-        let world = TILE_SIZE * view.zoom().exp2() * CSS_PER_UNIT;
-        for fade in self.fades.labels_mut() {
-            let (x, y) = view.screen_position(fade.at.point, units_x, units_y);
-            // When the world repeats on the screen, the label stays on its copy of the world.
-            let x = x * CSS_PER_UNIT;
-            let x = x + ((fade.at.screen.0 - x) / world).round() * world;
-            fade.at.screen = (x, y * CSS_PER_UNIT);
-        }
+        move_labels_with_map(&mut self.fades, view, (units_x, units_y));
         let size = (width, height);
         let stale = self.tiles_added
             || self
@@ -334,9 +347,14 @@ impl WebMap {
             .is_none_or(|last| !(0.0..PLACE_MS).contains(&(now - last.time)));
         if stale && due {
             let units = (units_x, units_y);
-            let scene = Scene::new(view, units_x, units_y, tile_set.max_zoom, |id| {
-                tiles.get(id)
-            });
+            let scene = Scene::new(
+                view,
+                units_x,
+                units_y,
+                tile_set.max_zoom,
+                self.layers,
+                |id| tiles.get(id),
+            );
             place_labels(
                 context,
                 &scene,
@@ -483,9 +501,20 @@ fn place_labels(
     }));
 }
 
+fn move_labels_with_map(fades: &mut Fades<Spot>, view: View, (units_x, units_y): (f64, f64)) {
+    let world = TILE_SIZE * view.zoom().exp2() * CSS_PER_UNIT;
+    for fade in fades.labels_mut() {
+        let (x, y) = view.screen_position(fade.at.point, units_x, units_y);
+        // When the world repeats on the screen, the label stays on its copy of the world.
+        let x = x * CSS_PER_UNIT;
+        let x = x + ((fade.at.screen.0 - x) / world).round() * world;
+        fade.at.screen = (x, y * CSS_PER_UNIT);
+    }
+}
+
 impl WebMap {
-    /// Whether the zoom did not change for [`SETTLE_MS`] before `now`, and whether the palette
-    /// changed since the last frame.
+    /// Whether the zoom did not change for [`SETTLE_MS`] before `now`, and whether the palette or
+    /// the layers changed since the last frame.
     fn changes(&mut self, now: f64) -> (bool, bool) {
         let zoom = self.view.zoom();
         if self
@@ -497,9 +526,17 @@ impl WebMap {
         let settled = self
             .zoom_since
             .is_some_and(|(_, since)| now - since >= SETTLE_MS);
-        let restyled = self.drawn_dark.replace(self.dark) != Some(self.dark);
-        (settled, restyled)
+        let dark_changed = self.drawn_dark.replace(self.dark) != Some(self.dark);
+        let cell_layers = cell_layers(self.layers);
+        let layers_changed = self.drawn_layers.replace(cell_layers) != Some(cell_layers);
+        (settled, dark_changed || layers_changed)
     }
+}
+
+/// The layers that the cell bitmaps show. Labels draw over the bitmaps, so a change of only the
+/// labels keeps the bitmaps.
+fn cell_layers(layers: Layers) -> Layers {
+    layers.without(Layer::Labels)
 }
 
 impl Drop for WebMap {
@@ -545,10 +582,11 @@ struct Frame {
     ratio: f64,
     palette: Palette,
     dark: bool,
+    layers: Layers,
     /// The zoom did not change for [`SETTLE_MS`].
     settled: bool,
-    /// The palette changed, so that all cells are drawn at once and the old and new palettes do not
-    /// show side by side.
+    /// The palette or the layers changed, so that all cells are drawn at once and the old and new
+    /// styles do not show side by side.
     restyled: bool,
 }
 
@@ -580,6 +618,7 @@ fn draw_cells(
         zoom,
         ratio,
         dark: frame.dark,
+        layers: cell_layers(frame.layers),
     };
     rasters.begin_frame();
     let mut jobs: Vec<_> = cells
@@ -620,7 +659,7 @@ fn draw_cells(
             None => painter.insert(Painter::new()?),
         };
         let paint_start = now();
-        let bitmap = paint_cell(painter, cell, source, tile, zoom, ratio, frame.palette)?;
+        let bitmap = paint_cell(painter, cell, source, tile, look(source), frame.palette)?;
         painter.mean_ms += (now() - paint_start - painter.mean_ms) * PAINT_MS_WEIGHT;
         let side = f64::from(bitmap.width());
         if let Some(old) = rasters.insert(cell.id, bitmap, look(source), side * side) {
@@ -669,10 +708,15 @@ fn paint_cell(
     cell: &VisibleTile,
     source: &VisibleTile,
     tile: &CanvasTile,
-    zoom: f64,
-    ratio: f64,
+    look: Look,
     palette: Palette,
 ) -> Result<ImageBitmap, JsValue> {
+    let Look {
+        zoom,
+        ratio,
+        layers,
+        ..
+    } = look;
     let side = raster::bitmap_side(cell.size, ratio);
     let Painter {
         canvas, context, ..
@@ -696,7 +740,7 @@ fn paint_cell(
         bleed + (source.left - cell.left) * ratio,
         bleed + (source.top - cell.top) * ratio,
     )?;
-    for class in Class::ALL {
+    for class in Class::ALL.into_iter().filter(|&class| layers.shows(class)) {
         let (area, line) = (palette.area(class), palette.line(class, zoom));
         for path in tile.paths(class, zoom) {
             if let Some(color) = area {

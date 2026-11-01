@@ -17,7 +17,8 @@ cargo add --git https://github.com/morellodev/tmaps tmaps-braille tmaps-core
 ## Usage
 
 ```rust,no_run
-use tmaps_braille::{BrailleTile, render};
+use tmaps_braille::{BrailleTile, Frame, render};
+use tmaps_core::style::Layers;
 use tmaps_core::tiles::{DEFAULT_MAX_ZOOM, TileId};
 use tmaps_core::view::View;
 use tmaps_core::{LatLon, PreparedTile};
@@ -29,9 +30,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let tile = BrailleTile::prepare(PreparedTile::decode(&bytes, "en")?);
 
     let view = View::new(LatLon::new(45.4642, 9.19)?, 5.0);
-    let grid = render(view, 80, 24, DEFAULT_MAX_ZOOM, &[], &[], |requested| {
-        (requested == id).then_some(&tile)
-    });
+    let frame = Frame {
+        view,
+        columns: 80,
+        rows: 24,
+        max_zoom: DEFAULT_MAX_ZOOM,
+        layers: Layers::ALL,
+    };
+    let grid = render(frame, &[], &[], |requested| (requested == id).then_some(&tile));
     for row in grid.rows() {
         println!("{}", row.iter().map(|cell| cell.symbol()).collect::<String>());
     }

@@ -61,8 +61,10 @@ pub async fn run(config: &Config, config_file: &Path, paths: &Paths) -> Result<(
     let cache = DiskCache::new(paths.cache_dir.join("tiles"), DEFAULT_CACHE_BYTES);
     let client = http::client()?;
     let source = TileSource::new(client.clone(), &config.endpoints.tilejson, cache);
-    let view = saved_view::initial(&paths.state_dir, config.places.get("home").copied());
-    let mut app = App::new(view).with_places(config.places.clone());
+    let (view, layers) = saved_view::initial(&paths.state_dir, config.places.get("home").copied());
+    let mut app = App::new(view)
+        .with_layers(layers)
+        .with_places(config.places.clone());
     let (sender, receiver) = mpsc::unbounded_channel();
     let loader = Loader::new(source, &config.lang, sender.clone());
     let services = Services::new(
@@ -94,7 +96,7 @@ pub async fn run(config: &Config, config_file: &Path, paths: &Paths) -> Result<(
     let _ = execute!(io::stdout(), EndSynchronizedUpdate, DisableMouseCapture);
     ratatui::restore();
     result?;
-    saved_view::save(&paths.state_dir, app.view()).map_err(Error::SaveView)
+    saved_view::save(&paths.state_dir, app.view(), app.layers()).map_err(Error::SaveView)
 }
 
 type Terminal = ratatui::Terminal<CrosstermBackend<BufWriter<Stdout>>>;

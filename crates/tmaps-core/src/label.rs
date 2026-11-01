@@ -1,5 +1,6 @@
 use crate::mvt::{Feature, Geometry, Layer, Value};
 use crate::scene::Part;
+use crate::style;
 
 /// What a label names. The order is the placement order: a label covers no earlier label.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -12,6 +13,23 @@ pub enum LabelClass {
     Suburb,
     Water,
     Road,
+}
+
+impl LabelClass {
+    /// The layer that shows or hides the label. Labels without a layer always show.
+    #[must_use]
+    pub fn layer(self) -> Option<style::Layer> {
+        match self {
+            Self::Road => Some(style::Layer::Roads),
+            Self::Country
+            | Self::City
+            | Self::State
+            | Self::Town
+            | Self::Village
+            | Self::Suburb
+            | Self::Water => None,
+        }
+    }
 }
 
 /// A label that a renderer places when the view shows it and other labels leave space.

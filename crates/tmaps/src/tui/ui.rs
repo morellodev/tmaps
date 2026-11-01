@@ -7,12 +7,12 @@ use ratatui::style::{Modifier, Style};
 use ratatui::symbols::line;
 use ratatui::text::{Line, Span, Text};
 use ratatui::widgets::{
-    Block, BorderType, Clear, HighlightSpacing, List, ListItem, ListState, Padding, Paragraph,
-    Scrollbar, ScrollbarOrientation, ScrollbarState, Widget,
+    Block, BorderType, Borders, Clear, HighlightSpacing, List, ListItem, ListState, Padding,
+    Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, Widget,
 };
 use tmaps_braille::{DOTS_PER_CELL_X, DOTS_PER_CELL_Y, Grid};
 use tmaps_core::LatLon;
-use tmaps_core::style::Class;
+use tmaps_core::style::{Class, Layer, Layers};
 use tmaps_core::view::View;
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
@@ -22,7 +22,7 @@ use crate::format::{distance, duration};
 use crate::geocode::Place;
 use crate::places::validate_name;
 use crate::routing::{Maneuver, Mode, Route, Step};
-use crate::tui::app::{App, Level, cursor_cell};
+use crate::tui::app::{App, LAYER_KEYS, Level, cursor_cell};
 use crate::tui::palette::Palette;
 use crate::tui::prompt::{Input, Prompt};
 use crate::tui::regions::{ListRegion, Regions};
@@ -59,9 +59,9 @@ type HelpGroup = (&'static str, &'static [Hint]);
 const MAP: HelpGroup = (
     "Map",
     &[
-        ("←↓↑→  hjkl", "pan, or drag the map"),
-        ("Shift + pan", "pan faster"),
+        ("←↓↑→  hjkl", "pan, drag; Shift: faster"),
         ("+ -  wheel", "zoom"),
+        ("v", "show or hide layers"),
     ],
 );
 const PLACES: HelpGroup = (
@@ -205,6 +205,10 @@ pub fn draw(frame: &mut Frame, app: &App, palette: Palette, units: Units) -> Reg
             areas.map,
         )
     });
+    let (layer_box, layer_rows) = app
+        .layers_open()
+        .then(|| draw_layers(frame, app.layers(), palette, areas.map))
+        .unzip();
     let help = app
         .help()
         .then(|| draw_help(frame, app.help_scroll(), palette, help_area(area)));
@@ -214,6 +218,8 @@ pub fn draw(frame: &mut Frame, app: &App, palette: Palette, units: Units) -> Reg
         steps,
         prompt_items,
         help,
+        layer_box,
+        layer_rows,
     }
 }
 
@@ -834,6 +840,9 @@ fn hints(app: &App, status: Status) -> &'static [Hint] {
     if app.help() {
         return &[("Esc", "close")];
     }
+    if app.layers_open() && app.prompt().is_none() {
+        return &[("1-6", "show or hide"), ("Esc", "close")];
+    }
     match app.prompt() {
         Some(Prompt::Search(search)) if search.removing.is_some() => {
             &[("Enter", "remove"), ("Esc", "keep")]
@@ -1307,6 +1316,68 @@ pub fn help_overflow(width: u16, height: u16) -> usize {
     rows.saturating_sub(usize::from(area.height.saturating_sub(2)))
 }
 
+fn layer_label(layer: Layer) -> &'static str {
+    match layer {
+        Layer::Roads => "Roads",
+        Layer::Transit => "Transit",
+        Layer::Buildings => "Buildings",
+        Layer::Nature => "Nature",
+        Layer::Boundaries => "Boundaries",
+        Layer::Labels => "Labels",
+    }
+}
+
+/// Draws the layer box at the top right of the map, so that the prompt and, on a wide map, the
+/// crosshair stay visible. Returns the box and its rows.
+fn draw_layers(
+    frame: &mut Frame,
+    layers: Layers,
+    palette: Palette,
+    area: Rect,
+) -> (Rect, ListRegion) {
+    let key_style = Style::new()
+        .fg(palette.route())
+        .add_modifier(Modifier::BOLD);
+    let lines: Vec<Line> = LAYER_KEYS
+        .iter()
+        .map(|&(key, layer)| {
+            let mark = if layers.contains(layer) { "[x]" } else { "[ ]" };
+            Line::from_iter([
+                Span::styled(key.to_string(), key_style),
+                Span::raw(format!(" {mark} {}", layer_label(layer))),
+            ])
+        })
+        .collect();
+    let mut block = box_block(" Layers ", palette).padding(Padding::horizontal(1));
+    let content_width = lines.iter().map(Line::width).max().unwrap_or(0);
+    let width = u16::try_from(content_width)
+        .unwrap_or(u16::MAX)
+        .saturating_add(4);
+    let mut height = u16::try_from(lines.len())
+        .unwrap_or(u16::MAX)
+        .saturating_add(2);
+    // On the shortest terminal, the map is one row shorter than the box.
+    if height > area.height {
+        block = block.borders(Borders::LEFT | Borders::TOP | Borders::RIGHT);
+        height -= 1;
+    }
+    let popup = Rect {
+        x: area.right().saturating_sub(width),
+        y: area.y,
+        width,
+        height,
+    }
+    .intersection(area);
+    let rows = ListRegion {
+        area: block.inner(popup),
+        offset: 0,
+        heights: vec![1; lines.len()],
+    };
+    frame.render_widget(Clear, popup);
+    frame.render_widget(Paragraph::new(lines).block(block), popup);
+    (popup, rows)
+}
+
 /// `scroll` is the number of rows above the visible part. Returns the area of the box.
 fn draw_help(frame: &mut Frame, scroll: usize, palette: Palette, area: Rect) -> Rect {
     let key_width = help_key_width();
@@ -1588,6 +1659,22 @@ mod tests {
         let milan = LatLon::new(45.4642, 9.19).unwrap();
         let text = screen(120, 20, &app_with_steps(&[milan; 30]));
         assert!(text.contains('█'));
+    }
+
+    #[test]
+    fn layer_box_marks_the_hidden_layers() {
+        let mut app = app_with_routes();
+        type_keys(&mut app, "v3");
+        let text = screen(120, 20, &app);
+        assert!(text.contains("3 [ ] Buildings") && text.contains("1 [x] Roads"));
+    }
+
+    #[test]
+    fn layer_box_shows_every_layer_on_the_smallest_terminal() {
+        let mut app = app_with_routes();
+        type_keys(&mut app, "v");
+        let text = screen(MIN_WIDTH, MIN_HEIGHT, &app);
+        assert!(text.contains("6 [x] Labels"), "{text}");
     }
 
     #[test]
@@ -1936,7 +2023,14 @@ mod tests {
             points: &points,
             selected: true,
         };
-        let grid = tmaps_braille::render(view, 8, 6, 14, &[route], &[], |_| None);
+        let frame = tmaps_braille::Frame {
+            view,
+            columns: 8,
+            rows: 6,
+            max_zoom: 14,
+            layers: Layers::ALL,
+        };
+        let grid = tmaps_braille::render(frame, &[route], &[], |_| None);
         let palette = Palette::new(Depth::Rgb, Shade::Dark);
         let area = Rect::new(0, 0, 8, 6);
         let mut buffer = Buffer::empty(area);

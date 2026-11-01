@@ -7,7 +7,7 @@ mod tile;
 
 pub use self::grid::{Cell, Grid};
 pub use self::label::Label;
-pub use self::render::{RouteLine, render};
+pub use self::render::{Frame, RouteLine, render};
 pub use self::tile::BrailleTile;
 
 /// Braille dots in one terminal cell: 2 columns and 4 rows. One dot is one screen unit, because
