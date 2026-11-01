@@ -195,23 +195,39 @@ function stepGlide(now) {
   redraw();
 }
 
-let pointer = null;
+const pointers = new Map();
 canvas.addEventListener("pointerdown", (event) => {
-  if (!event.isPrimary || event.button !== 0) return;
-  pointer = { id: event.pointerId, x: event.clientX, y: event.clientY };
+  if (event.button !== 0 || pointers.size === 2) return;
+  pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
   canvas.setPointerCapture(event.pointerId);
 });
 canvas.addEventListener("pointermove", (event) => {
-  if (event.pointerId !== pointer?.id || (event.clientX === pointer.x && event.clientY === pointer.y)) return;
+  const last = pointers.get(event.pointerId);
+  if (!last || (event.clientX === last.x && event.clientY === last.y)) return;
+  const next = { x: event.clientX, y: event.clientY };
   stopGlide();
-  map.pan_by(pointer.x - event.clientX, pointer.y - event.clientY);
-  pointer = { id: event.pointerId, x: event.clientX, y: event.clientY };
+  if (pointers.size === 1) {
+    map.pan_by(last.x - next.x, last.y - next.y);
+  } else {
+    const [, still] = [...pointers].find(([id]) => id !== event.pointerId);
+    pinch(still, last, next);
+  }
+  pointers.set(event.pointerId, next);
   redraw();
 });
 for (const type of ["pointerup", "pointercancel"]) {
-  canvas.addEventListener(type, (event) => {
-    if (event.pointerId === pointer?.id) pointer = null;
-  });
+  canvas.addEventListener(type, (event) => pointers.delete(event.pointerId));
+}
+
+// The point under the middle of the two fingers follows the middle, and the zoom follows the
+// distance between the fingers: two times the distance is one zoom level.
+function pinch(still, from, to) {
+  const box = canvas.getBoundingClientRect();
+  const middle = (a, b) => ({ x: (a.x + b.x) / 2 - box.left, y: (a.y + b.y) / 2 - box.top });
+  const [before, after] = [middle(still, from), middle(still, to)];
+  map.pan_by(before.x - after.x, before.y - after.y);
+  const spread = Math.hypot(to.x - still.x, to.y - still.y) / Math.hypot(from.x - still.x, from.y - still.y);
+  if (Number.isFinite(spread) && spread > 0) map.zoom_at(Math.log2(spread), after.x, after.y);
 }
 
 canvas.addEventListener(
