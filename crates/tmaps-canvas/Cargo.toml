@@ -1,0 +1,24 @@
+[package]
+name = "tmaps-canvas"
+description = "Draws tmaps scenes on an HTML canvas, in WebAssembly"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[lints]
+workspace = true
+
+[dependencies]
+js-sys = "0.3.107"
+tmaps-core = { path = "../tmaps-core" }
+wasm-bindgen = "0.2.130"
+web-sys = { version = "0.3.107", features = ["CanvasRenderingContext2d", "ContextAttributes2d", "Element", "HtmlCanvasElement", "ImageBitmap", "OffscreenCanvas", "OffscreenCanvasRenderingContext2d", "Path2d", "Performance", "TextMetrics", "Window"] }
+
+[dev-dependencies]
+tmaps-core = { path = "../tmaps-core", features = ["test-util"] }

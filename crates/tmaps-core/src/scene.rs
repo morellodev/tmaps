@@ -28,8 +28,23 @@ pub struct Part {
     corners: [[f32; 2]; 2],
 }
 
+impl Shape {
+    /// The lowest zoom that shows the shape.
+    #[must_use]
+    pub fn min_zoom(&self) -> f64 {
+        self.min_zoom
+    }
+
+    /// All parts of the shape. [`SceneTile::parts`] gives only the parts that can draw.
+    #[must_use]
+    pub fn parts(&self) -> &[Part] {
+        &self.parts
+    }
+}
+
 impl Part {
-    pub(crate) fn new(points: Vec<[f32; 2]>) -> Self {
+    #[must_use]
+    pub fn new(points: Vec<[f32; 2]>) -> Self {
         let corners = points.iter().fold(
             [[f32::INFINITY; 2], [f32::NEG_INFINITY; 2]],
             |[low, high], &[x, y]| {
@@ -158,6 +173,23 @@ impl PreparedTile {
             }
         }
         prepared
+    }
+
+    /// The shapes of `class` at each zoom. [`Scene::shapes`] gives only the shapes that the zoom
+    /// shows.
+    #[must_use]
+    pub fn shapes(&self, class: Class) -> &[Shape] {
+        &self.shapes[class.index()]
+    }
+
+    /// A tile with `labels` and no shapes, for a renderer that keeps its own copy of the
+    /// geometry, such as canvas paths.
+    #[must_use]
+    pub fn with_labels(labels: Vec<LabelCandidate>) -> Self {
+        Self {
+            labels,
+            ..Self::default()
+        }
     }
 
     #[must_use]
@@ -321,18 +353,9 @@ fn loaded_ancestor<'a, T>(
     placement: &VisibleTile,
     tile: impl Fn(TileId) -> Option<&'a T>,
 ) -> Option<(VisibleTile, &'a T)> {
-    let id = placement.id;
-    (0..id.z).rev().find_map(|z| {
-        let ancestor = id.ancestor(z)?;
-        let loaded = tile(ancestor)?;
-        let levels = id.z - z;
-        let ancestor_placement = VisibleTile {
-            id: ancestor,
-            left: placement.left - f64::from(id.x - (ancestor.x << levels)) * placement.size,
-            top: placement.top - f64::from(id.y - (ancestor.y << levels)) * placement.size,
-            size: placement.size * f64::from(1_u32 << levels),
-        };
-        Some((ancestor_placement, loaded))
+    (0..placement.id.z).rev().find_map(|z| {
+        let ancestor = placement.ancestor(z)?;
+        Some((ancestor, tile(ancestor.id)?))
     })
 }
 

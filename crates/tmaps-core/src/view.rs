@@ -6,7 +6,7 @@ use crate::tiles::TileId;
 /// Deepest zoom of the view. Above the zoom of the tile set, the renderer scales the deepest tiles.
 pub const MAX_ZOOM: f64 = 18.0;
 /// Width of a tile in screen units at its own zoom. Each renderer picks the size of a unit, for
-/// example one braille dot or one CSS pixel.
+/// example one braille dot or two CSS pixels.
 pub const TILE_SIZE: f64 = 256.0;
 /// The part of the screen that [`View::fitting`] fills, so that the points keep a margin.
 const FIT_FILL: f64 = 0.8;
@@ -30,6 +30,22 @@ pub struct VisibleTile {
     pub top: f64,
     /// Width and height in units. More than [`TILE_SIZE`] when the view overzooms the tile.
     pub size: f64,
+}
+
+impl VisibleTile {
+    /// The tile at zoom `z` that contains this tile, at its place on the same screen, or `None`
+    /// if `z` is deeper.
+    #[must_use]
+    pub fn ancestor(&self, z: u8) -> Option<Self> {
+        let id = self.id.ancestor(z)?;
+        let levels = self.id.z - z;
+        Some(Self {
+            id,
+            left: self.left - f64::from(self.id.x - (id.x << levels)) * self.size,
+            top: self.top - f64::from(self.id.y - (id.y << levels)) * self.size,
+            size: self.size * f64::from(1_u32 << levels),
+        })
+    }
 }
 
 impl View {
@@ -293,6 +309,24 @@ mod tests {
     fn fitting_one_point_uses_the_max_zoom() {
         let view = View::fitting(&[milan()], 200.0, 100.0).unwrap();
         assert_eq!(view.zoom(), MAX_ZOOM);
+    }
+
+    #[test]
+    fn ancestor_covers_the_tile_on_the_screen() {
+        let tile = VisibleTile {
+            id: TileId { z: 3, x: 5, y: 2 },
+            left: 10.0,
+            top: 20.0,
+            size: 100.0,
+        };
+        let ancestor = tile.ancestor(1).unwrap();
+        assert_eq!(ancestor.id, TileId { z: 1, x: 1, y: 0 });
+        assert_eq!(
+            (ancestor.left, ancestor.top, ancestor.size),
+            (-90.0, -180.0, 400.0)
+        );
+        assert_eq!(tile.ancestor(3), Some(tile));
+        assert_eq!(tile.ancestor(4), None);
     }
 
     #[test]

@@ -18,6 +18,11 @@ changelog_include = ["tmaps-core", "tmaps-braille"]
 git_tag_enable = true
 git_release_enable = true
 
+# The web demo ships as a page, not as a release.
+[[package]]
+name = "tmaps-canvas"
+release = false
+
 [changelog]
 commit_parsers = [
     { message = "^(ci|test)[(:!]", skip = true },

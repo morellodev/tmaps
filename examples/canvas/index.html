@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light dark">
+    <title>tmaps on the web</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --page: light-dark(#ece7df, #1b1d22);
+        --ink: light-dark(rgb(0 0 0 / 0.75), rgb(255 255 255 / 0.8));
+        --panel: light-dark(rgb(255 255 255 / 0.5), rgb(0 0 0 / 0.5));
+        --error: light-dark(rgb(255 255 255 / 0.9), rgb(27 29 34 / 0.9));
+        --focus: light-dark(#2f6fde, #5b9bff);
+      }
+
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+
+      body {
+        display: grid;
+        background: var(--page);
+        color: var(--ink);
+        font: 12px/20px system-ui, sans-serif;
+        overscroll-behavior: none;
+      }
+
+      body > * {
+        grid-area: 1 / 1;
+      }
+
+      #map {
+        display: block;
+        inline-size: 100%;
+        block-size: 100%;
+        min-block-size: 0;
+        touch-action: none;
+        cursor: grab;
+      }
+
+      #map:active {
+        cursor: grabbing;
+      }
+
+      #map:focus-visible {
+        outline: 3px solid var(--focus);
+        outline-offset: -3px;
+      }
+
+      .attribution {
+        align-self: end;
+        justify-self: end;
+        max-inline-size: calc(100% - 10px);
+        padding: 0 5px;
+        background: var(--panel);
+        text-align: end;
+      }
+
+      .attribution a {
+        color: inherit;
+      }
+
+      #status.error {
+        align-self: start;
+        justify-self: start;
+        margin: 10px;
+        padding: 5px 10px;
+        background: var(--error);
+      }
+
+      .visually-hidden:where(:not(:focus-within, :active)) {
+        position: absolute !important;
+        clip-path: inset(50%) !important;
+        overflow: hidden !important;
+        width: 1px !important;
+        height: 1px !important;
+        margin: -1px !important;
+        padding: 0 !important;
+        border: 0 !important;
+        white-space: nowrap !important;
+      }
+    </style>
+    <link rel="modulepreload" href="pkg/tmaps_canvas.js">
+    <link rel="preload" href="pkg/tmaps_canvas_bg.wasm" as="fetch" type="application/wasm" crossorigin>
+    <script type="module" src="main.js"></script>
+  </head>
+  <body>
+    <canvas id="map" tabindex="0" role="application" aria-roledescription="map"
+      aria-label="Map. Drag or use the arrow keys to move. Scroll or use the plus and minus keys to zoom."
+      aria-describedby="status"></canvas>
+    <output id="status" class="visually-hidden">Loading the map…</output>
+    <small id="attribution" class="attribution"></small>
+  </body>
+</html>
