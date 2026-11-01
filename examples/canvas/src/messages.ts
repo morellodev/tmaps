@@ -1,7 +1,7 @@
 export type TilePath = [kind: number, minZoom: number, data: string];
 
 export type ToWorker =
-  | { type: "init"; module: WebAssembly.Module; lang: string }
+  | { type: "init"; module: WebAssembly.Module }
   | { type: "tileset"; url: string }
   | { type: "tile"; job: number; url: string }
   | { type: "cancel"; job: number };

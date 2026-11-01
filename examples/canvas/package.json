@@ -3,10 +3,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "wasm": "node scripts/build-wasm.ts",
     "dev": "vite",
     "typecheck": "tsc -b",
-    "build": "tsc -b && vite build",
+    "build": "vite build && tsc -b",
     "preview": "vite preview"
   },
   "devDependencies": {

@@ -1,20 +1,22 @@
-import init, { prepare_tile } from "../pkg/tmaps_canvas.js";
+import { initSync, prepare_tile } from "../pkg/tmaps_canvas.js";
 import type { FromWorker, TilePath, ToWorker } from "./messages.ts";
 
-const ready = Promise.withResolvers<unknown>();
-let lang = "";
 const fetches = new Map<number, AbortController>();
+let initError: unknown;
 
 function send(message: FromWorker, transfer: Transferable[] = []) {
   postMessage(message, transfer);
 }
 
-function start(module: WebAssembly.Module, language: string) {
-  lang = language;
-  init({ module_or_path: module }).then(ready.resolve, (error: unknown) => {
-    ready.reject(error);
+// The page sends "init" before the first "tile", and messages arrive in order, so prepare_tile
+// always runs after initSync.
+function start(module: WebAssembly.Module) {
+  try {
+    initSync({ module });
+  } catch (error) {
+    initError = error;
     send({ type: "failed", error: describe(error) });
-  });
+  }
 }
 
 async function loadTileSet(url: string) {
@@ -33,9 +35,9 @@ async function loadTile(job: number, url: string) {
   fetches.set(job, controller);
   try {
     const bytes = await tileBytes(await fetch(url, { signal: controller.signal }));
-    await ready.promise;
     controller.signal.throwIfAborted();
-    const [labels, paths] = prepare_tile(bytes, lang) as [Uint8Array<ArrayBuffer>, TilePath[]];
+    if (initError) throw initError;
+    const [labels, paths] = prepare_tile(bytes, navigator.language) as [Uint8Array<ArrayBuffer>, TilePath[]];
     send({ type: "tile", job, labels, paths }, [labels.buffer]);
   } catch (error) {
     if (!controller.signal.aborted) send({ type: "tile", job, error: describe(error) });
@@ -62,7 +64,7 @@ function describe(error: unknown) {
 addEventListener("message", ({ data }: MessageEvent<ToWorker>) => {
   switch (data.type) {
     case "init":
-      return start(data.module, data.lang);
+      return start(data.module);
     case "tileset":
       return void loadTileSet(data.url);
     case "tile":
@@ -72,6 +74,5 @@ addEventListener("message", ({ data }: MessageEvent<ToWorker>) => {
   }
 });
 addEventListener("messageerror", () => {
-  ready.reject(new Error("a message from the page cannot be read"));
   send({ type: "failed", error: "a message from the page cannot be read" });
 });

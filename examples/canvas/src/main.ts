@@ -22,8 +22,8 @@ function showError(message: string) {
   status.classList.replace("visually-hidden", "error");
 }
 
-// The page compiles the module once and gives it to the workers, so that they do not fetch and
-// compile it again.
+// The page compiles the module one time and sends it to the workers, so that they do not
+// download and compile it again.
 const wasm = WebAssembly.compileStreaming(fetch(new URL("../pkg/tmaps_canvas_bg.wasm", import.meta.url)));
 
 type WorkerEntry = { worker: Worker; jobs: number };
@@ -53,7 +53,7 @@ try {
   const module = await wasm;
   await init({ module_or_path: module });
   map = new WebMap(canvas);
-  for (const { worker } of workers) worker.postMessage({ type: "init", module, lang: navigator.language });
+  for (const { worker } of workers) worker.postMessage({ type: "init", module });
 } catch (error) {
   showError(`The map cannot start: ${error instanceof Error ? error.message : error}`);
   throw error;

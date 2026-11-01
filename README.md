@@ -109,13 +109,12 @@ docker run --rm -v "$PWD":/src:ro -w /src -e CARGO_TARGET_DIR=/tmp/target rust:<
 
 ```sh
 pnpm install
-pnpm --filter tmaps-canvas-demo wasm
 pnpm --filter tmaps-canvas-demo dev
 ```
 
-The `wasm` script builds `tmaps-canvas` in Docker, so the host needs no wasm32 target. It installs the `wasm-bindgen-cli` version from `Cargo.lock`, because the CLI and the crate must have the same version. Run it again after a change to the Rust code. Two Docker volumes, `tmaps-canvas-target` and `tmaps-canvas-registry`, keep the build cache between runs.
+Vite builds `tmaps-canvas` in Docker before it starts, so the host needs no Rust toolchain. While `dev` runs, a change to `tmaps-canvas`, `tmaps-core`, or the Cargo files builds the wasm again and reloads the page. The build uses a `tmaps-canvas-wasm` Docker image with the wasm target and the `wasm-bindgen-cli` version from `Cargo.lock`, because the CLI and the crate must have the same version. Docker makes the image again only when one of these versions or `plugins/wasm.Dockerfile` changes. Two Docker volumes, `tmaps-canvas-target` and `tmaps-canvas-registry`, keep the build cache between runs.
 
-To type-check and build the page into `examples/canvas/dist/`, run `pnpm --filter tmaps-canvas-demo build`. To serve the build, run `pnpm --filter tmaps-canvas-demo preview`.
+To build the page into `examples/canvas/dist/` and type-check it, run `pnpm --filter tmaps-canvas-demo build`. To serve the build, run `pnpm --filter tmaps-canvas-demo preview`. The `typecheck` script needs the wasm types in `examples/canvas/pkg/`, so run `dev` or `build` one time before you use it.
 
 ## License
 
