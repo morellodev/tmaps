@@ -3384,6 +3384,7 @@ version = "0.2.0"
 dependencies = [
  "js-sys",
  "tmaps-core",
+ "unicode-segmentation",
  "wasm-bindgen",
  "web-sys",
 ]

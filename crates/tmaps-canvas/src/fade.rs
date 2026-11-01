@@ -34,12 +34,12 @@ impl<P> Default for Fades<P> {
     }
 }
 
-impl<P: Copy> Fades<P> {
+impl<P> Fades<P> {
     /// The position of each text on the map, also of a text that fades out.
-    pub fn positions(&self) -> impl Iterator<Item = (&str, P)> {
+    pub fn positions(&self) -> impl Iterator<Item = (&str, &P)> {
         self.labels
             .iter()
-            .map(|(text, fade)| (text.as_str(), fade.at))
+            .map(|(text, fade)| (text.as_str(), &fade.at))
     }
 
     /// All labels, also the labels that fade out, so that the caller can update their positions.
@@ -178,7 +178,7 @@ mod tests {
             200.0
         ));
         assert_eq!(opacities(&fades, "Roma"), [(1, 0.25), (0, 0.75)]);
-        assert_eq!(fades.positions().collect::<Vec<_>>(), [("Roma", 1)]);
+        assert_eq!(fades.positions().collect::<Vec<_>>(), [("Roma", &1)]);
     }
 
     #[test]

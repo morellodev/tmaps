@@ -16,6 +16,7 @@ use web_sys::{
 use crate::cache::TileCache;
 use crate::fade::Fades;
 use crate::labels::{self, Candidate};
+use crate::line_text::Run;
 use crate::paint::{Line, Palette};
 use crate::raster::{self, BLEED, Look, RasterCache, Style};
 use crate::tile::{self, CanvasTile, TilePath, UNITS};
@@ -84,11 +85,12 @@ struct Placement {
     size: (f64, f64),
 }
 
-/// The position of a label on the map, and its position on the screen in the last frame.
-#[derive(Clone, Copy)]
+/// The position of a label on the map, its position on the screen in the last frame, and the
+/// parts of its text around that position.
 struct Spot {
     point: LatLon,
     screen: ScreenPoint,
+    runs: Vec<Run>,
 }
 
 #[wasm_bindgen]
@@ -371,20 +373,7 @@ impl WebMap {
             self.tiles_added = false;
         }
         let fading = self.fades.step(now);
-        context.set_text_align("center");
-        context.set_text_baseline("middle");
-        context.set_line_width(3.0);
-        context.set_stroke_style_str(palette.halo());
-        for (label, fade) in self.fades.labels() {
-            let text = palette.text(fade.class);
-            let (x, y) = fade.at.screen;
-            context.set_global_alpha(fade.opacity);
-            context.set_font(text.font);
-            context.set_fill_style_str(text.color);
-            context.stroke_text(label, x, y)?;
-            context.fill_text(label, x, y)?;
-        }
-        context.set_global_alpha(1.0);
+        draw_labels(context, &self.fades, palette, ratio)?;
         Ok(fading || stale && !due || cells_wait)
     }
 }
@@ -486,7 +475,7 @@ fn place_labels(
         },
     );
     let view = scene.view();
-    fades.place(placed.iter().map(|label| {
+    fades.place(placed.into_iter().map(|label| {
         let point = view.point_at(
             label.x / CSS_PER_UNIT,
             label.y / CSS_PER_UNIT,
@@ -496,9 +485,57 @@ fn place_labels(
         let at = Spot {
             point,
             screen: (label.x, label.y),
+            runs: label.runs,
         };
         (label.text, label.class, at, label.kept)
     }));
+}
+
+/// Draws each run of each label, turned with its line. `ratio` is the device pixel ratio.
+fn draw_labels(
+    context: &CanvasRenderingContext2d,
+    fades: &Fades<Spot>,
+    palette: Palette,
+    ratio: f64,
+) -> Result<(), JsValue> {
+    context.set_text_align("center");
+    context.set_text_baseline("middle");
+    context.set_line_width(3.0);
+    context.set_stroke_style_str(palette.halo());
+    for (label, fade) in fades.labels() {
+        let text = palette.text(fade.class);
+        let (x, y) = fade.at.screen;
+        context.set_global_alpha(fade.opacity);
+        context.set_font(text.font);
+        context.set_fill_style_str(text.color);
+        // All halos go first, so that the halo of a run does not cover the text of the run
+        // next to it.
+        for fill in [false, true] {
+            for run in &fade.at.runs {
+                let Some(part) = label.get(run.range.clone()) else {
+                    continue;
+                };
+                let (sin, cos) = run.angle.sin_cos();
+                let (dx, dy) = run.offset;
+                context.set_transform(
+                    ratio * cos,
+                    ratio * sin,
+                    -ratio * sin,
+                    ratio * cos,
+                    ratio * (x + dx),
+                    ratio * (y + dy),
+                )?;
+                if fill {
+                    context.fill_text(part, 0.0, 0.0)?;
+                } else {
+                    context.stroke_text(part, 0.0, 0.0)?;
+                }
+            }
+        }
+    }
+    context.set_transform(ratio, 0.0, 0.0, ratio, 0.0, 0.0)?;
+    context.set_global_alpha(1.0);
+    Ok(())
 }
 
 fn move_labels_with_map(fades: &mut Fades<Spot>, view: View, (units_x, units_y): (f64, f64)) {

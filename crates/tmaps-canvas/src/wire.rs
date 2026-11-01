@@ -51,6 +51,8 @@ pub fn encode(labels: &[LabelCandidate]) -> Vec<u8> {
         put_len(&mut bytes, anchors.len());
         for anchor in anchors {
             put_point(&mut bytes, anchor.at);
+            put_len(&mut bytes, anchor.line);
+            bytes.extend(anchor.along.to_le_bytes());
             bytes.push(anchor.level);
             bytes.extend(anchor.spacing.to_le_bytes());
             bytes.extend(anchor.room.to_le_bytes());
@@ -91,6 +93,8 @@ pub fn decode(bytes: &[u8]) -> Option<Vec<(LabelCandidate, Vec<LineAnchor>)>> {
             .map(|_| {
                 Some(LineAnchor {
                     at: reader.point()?,
+                    line: reader.len()?,
+                    along: f32::from_le_bytes(reader.array()?),
                     level: reader.byte()?,
                     spacing: f32::from_le_bytes(reader.array()?),
                     room: f32::from_le_bytes(reader.array()?),
