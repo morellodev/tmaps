@@ -17,7 +17,7 @@ use crate::cache::TileCache;
 use crate::fade::Fades;
 use crate::labels::{self, Candidate};
 use crate::paint::{Line, Palette};
-use crate::raster::{self, BLEED, Look, Need, RasterCache};
+use crate::raster::{self, BLEED, Look, RasterCache, Style};
 use crate::tile::{self, CanvasTile, TilePath, UNITS};
 use crate::wire;
 
@@ -65,8 +65,7 @@ pub struct WebMap {
     painter: Option<Painter>,
     /// The zoom of the view, and the time in milliseconds when the view got it.
     zoom_since: Option<(f64, f64)>,
-    drawn_dark: Option<bool>,
-    drawn_layers: Option<Layers>,
+    drawn_style: Option<Style>,
     route: Vec<LatLon>,
     dark: bool,
     layers: Layers,
@@ -109,8 +108,7 @@ impl WebMap {
             rasters: RasterCache::default(),
             painter: None,
             zoom_since: None,
-            drawn_dark: None,
-            drawn_layers: None,
+            drawn_style: None,
             route: Vec::new(),
             dark: false,
             layers: Layers::ALL,
@@ -289,7 +287,8 @@ impl WebMap {
     ///
     /// If the browser rejects a canvas call.
     pub fn draw(&mut self, now: f64) -> Result<bool, JsValue> {
-        let (settled, restyled) = self.changes(now);
+        let cell_style = self.style();
+        let (settled, restyled) = self.changes(now, cell_style);
         let (width, height) = self.size();
         let ratio = web_sys::window().map_or(1.0, |window| window.device_pixel_ratio());
         let (pixels_x, pixels_y) = (device_pixels(width * ratio), device_pixels(height * ratio));
@@ -317,9 +316,7 @@ impl WebMap {
                 units: (units_x, units_y),
                 max_zoom: tile_set.max_zoom,
                 ratio,
-                palette,
-                dark: self.dark,
-                cell_layers: cell_layers(self.layers),
+                style: cell_style,
                 settled,
                 restyled,
             },
@@ -516,9 +513,9 @@ fn move_labels_with_map(fades: &mut Fades<Spot>, view: View, (units_x, units_y):
 }
 
 impl WebMap {
-    /// Whether the zoom did not change for [`SETTLE_MS`] before `now`, and whether the palette or
-    /// the layers changed since the last frame.
-    fn changes(&mut self, now: f64) -> (bool, bool) {
+    /// Whether the zoom did not change for [`SETTLE_MS`] before `now`, and whether `style` is not
+    /// the cell style of the last frame.
+    fn changes(&mut self, now: f64, style: Style) -> (bool, bool) {
         let zoom = self.view.zoom();
         if self
             .zoom_since
@@ -529,17 +526,17 @@ impl WebMap {
         let settled = self
             .zoom_since
             .is_some_and(|(_, since)| now - since >= SETTLE_MS);
-        let dark_changed = self.drawn_dark.replace(self.dark) != Some(self.dark);
-        let cell_layers = cell_layers(self.layers);
-        let layers_changed = self.drawn_layers.replace(cell_layers) != Some(cell_layers);
-        (settled, dark_changed || layers_changed)
+        (settled, self.drawn_style.replace(style) != Some(style))
     }
-}
 
-/// The layers that the cell bitmaps show. Labels draw over the bitmaps, so a change of only the
-/// labels keeps the bitmaps.
-fn cell_layers(layers: Layers) -> Layers {
-    layers.without(Layer::Labels)
+    /// The style of the cell bitmaps. Labels draw over the bitmaps, so a change of only the labels
+    /// keeps the bitmaps.
+    fn style(&self) -> Style {
+        Style {
+            dark: self.dark,
+            layers: self.layers.without(Layer::Labels),
+        }
+    }
 }
 
 impl Drop for WebMap {
@@ -583,13 +580,11 @@ struct Frame {
     units: (f64, f64),
     max_zoom: u8,
     ratio: f64,
-    palette: Palette,
-    dark: bool,
-    cell_layers: Layers,
+    style: Style,
     /// The zoom did not change for [`SETTLE_MS`].
     settled: bool,
-    /// The palette or the layers changed, so that all cells are drawn at once and the old and new
-    /// styles do not show side by side.
+    /// The style changed, so that all cells are drawn in one frame. A bitmap of the old style does
+    /// not show, so the cells that wait show as holes.
     restyled: bool,
 }
 
@@ -620,28 +615,30 @@ fn draw_cells(
         source: source.id,
         zoom,
         ratio,
-        dark: frame.dark,
-        layers: frame.cell_layers,
+        style: frame.style,
     };
     rasters.begin_frame();
     let mut jobs: Vec<_> = cells
         .iter()
         .filter_map(|(cell, source)| {
             let need = rasters.need(cell.id, look(source.as_ref()?), frame.settled)?;
-            Some((need, cell, source.as_ref()?))
+            Some((
+                need,
+                rasters.shows(cell, frame.style),
+                cell,
+                source.as_ref()?,
+            ))
         })
         .collect();
-    // A cell that has no bitmap and no fallback shows as a hole, so it comes first.
-    jobs.sort_by_cached_key(|(need, cell, _)| {
-        let shows = *need != Need::Empty || !rasters.fallback(cell).is_empty();
-        (*need, shows)
-    });
+    // A cell without a bitmap of the style shows as a hole, so it comes first. All cells have
+    // the same zoom, so a drawn cell does not change what another cell shows.
+    jobs.sort_by_key(|&(need, shows, ..)| (shows, need));
     let performance = web_sys::window().and_then(|window| window.performance());
     let now = || performance.as_ref().map_or(0.0, web_sys::Performance::now);
     let start = now();
     let mut drawn = HashSet::new();
-    for (need, cell, source) in jobs {
-        let hole = need == Need::Empty && rasters.fallback(cell).is_empty();
+    for (need, shows, cell, source) in jobs {
+        let hole = !shows;
         let mean_ms = painter.as_ref().map_or(0.0, |painter| painter.mean_ms);
         let fits = now() - start + mean_ms <= RASTER_BUDGET_MS
             && (frame.settled || drawn.len() < MOVING_CELLS);
@@ -662,7 +659,7 @@ fn draw_cells(
             None => painter.insert(Painter::new()?),
         };
         let paint_start = now();
-        let bitmap = paint_cell(painter, cell, source, tile, look(source), frame.palette)?;
+        let bitmap = paint_cell(painter, cell, source, tile, look(source))?;
         painter.mean_ms += (now() - paint_start - painter.mean_ms) * PAINT_MS_WEIGHT;
         let side = f64::from(bitmap.width());
         if let Some(old) = rasters.insert(cell.id, bitmap, look(source), side * side) {
@@ -672,18 +669,18 @@ fn draw_cells(
 
     context.set_transform(1.0, 0.0, 0.0, 1.0, 0.0, 0.0)?;
     for (cell, _) in &cells {
-        if let Some((bitmap, drawn)) = rasters.get(cell.id) {
+        if let Some((bitmap, drawn)) = rasters.get(cell.id, frame.style) {
             blit(context, bitmap, cell, drawn, zoom, ratio)?;
             continue;
         }
-        let fallback = rasters.fallback(cell);
+        let fallback = rasters.fallback(cell, frame.style);
         if fallback.is_empty() {
             continue;
         }
         context.save();
         clip_to(context, device_rect(cell, ratio));
         for other in fallback {
-            if let Some((bitmap, drawn)) = rasters.get(other.id) {
+            if let Some((bitmap, drawn)) = rasters.get(other.id, frame.style) {
                 blit(context, bitmap, &other, drawn, zoom, ratio)?;
             }
         }
@@ -712,14 +709,14 @@ fn paint_cell(
     source: &VisibleTile,
     tile: &CanvasTile,
     look: Look,
-    palette: Palette,
 ) -> Result<ImageBitmap, JsValue> {
     let Look {
         zoom,
         ratio,
-        layers,
+        style: Style { dark, layers },
         ..
     } = look;
+    let palette = Palette::new(dark);
     let side = raster::bitmap_side(cell.size, ratio);
     let Painter {
         canvas, context, ..
