@@ -1,4 +1,5 @@
 import { initSync, prepare_tile } from "../pkg/tmaps_canvas.js";
+import { describe } from "./errors.ts";
 import type { FromWorker, TilePath, ToWorker } from "./messages.ts";
 
 const fetches = new Map<number, AbortController>();
@@ -14,9 +15,13 @@ function start(module: WebAssembly.Module) {
   try {
     initSync({ module });
   } catch (error) {
-    initError = error;
-    send({ type: "failed", error: describe(error) });
+    failInit(error);
   }
+}
+
+function failInit(error: unknown) {
+  initError = error;
+  send({ type: "failed", error: describe(error) });
 }
 
 async function loadTileSet(url: string) {
@@ -57,10 +62,6 @@ async function tileBytes(response: Response) {
   return new Uint8Array(await new Response(stream).arrayBuffer());
 }
 
-function describe(error: unknown) {
-  return error instanceof Error ? error.message : String(error);
-}
-
 addEventListener("message", ({ data }: MessageEvent<ToWorker>) => {
   switch (data.type) {
     case "init":
@@ -73,6 +74,5 @@ addEventListener("message", ({ data }: MessageEvent<ToWorker>) => {
       return fetches.get(data.job)?.abort();
   }
 });
-addEventListener("messageerror", () => {
-  send({ type: "failed", error: "a message from the page cannot be read" });
-});
+// Only "init" has data that can fail to deserialize: the WebAssembly.Module.
+addEventListener("messageerror", () => failInit(new Error("a message from the page cannot be read")));

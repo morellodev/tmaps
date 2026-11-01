@@ -38,6 +38,16 @@ jobs:
       - run: cargo check -p tmaps-core -p tmaps-braille --target wasm32-unknown-unknown --locked
       - run: cargo build -p tmaps-canvas --target wasm32-unknown-unknown --release --locked
 
+  canvas-demo:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/setup@v3
+        with:
+          cache: true
+          require-lockfile: true
+      - run: pnpm --filter tmaps-canvas-demo build
+
   test:
     strategy:
       fail-fast: false

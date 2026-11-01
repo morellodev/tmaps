@@ -1,4 +1,5 @@
 import init, { WebMap } from "../pkg/tmaps_canvas.js";
+import { describe } from "./errors.ts";
 import type { FromWorker, TilePath, TileResult, TileSetResult } from "./messages.ts";
 
 const TILEJSON = "https://tiles.openfreemap.org/planet";
@@ -55,7 +56,7 @@ try {
   map = new WebMap(canvas);
   for (const { worker } of workers) worker.postMessage({ type: "init", module });
 } catch (error) {
-  showError(`The map cannot start: ${error instanceof Error ? error.message : error}`);
+  showError(`The map cannot start: ${describe(error)}`);
   throw error;
 }
 
@@ -348,7 +349,7 @@ try {
   showAttribution(result.attribution);
   redraw();
 } catch (error) {
-  showError(`The map server is not available: ${error instanceof Error ? error.message : error}`);
+  showError(`The map server is not available: ${describe(error)}`);
   showAttribution("");
   map.draw(performance.now());
 }

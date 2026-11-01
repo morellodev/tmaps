@@ -15,10 +15,15 @@ const CONTAINER_TARGET_DIR = "/tmp/target";
 
 export function wasm(): Plugin {
   let config: ResolvedConfig;
-  // A restart of the dev server must stop its build, or the next server starts a second build.
+  // On a restart, the old server must stop a build from hotUpdate, or that build runs at the same
+  // time as the build of the new server. The ssr environment calls closeBundle without a wait for
+  // buildStart, so the abort also stops the first build, and the restart does not wait for it.
   const stop = new AbortController();
-  const logError = (error: unknown) => config.logger.error(String(error), { timestamp: true });
+  const logError = (error: unknown) => {
+    if (!stop.signal.aborted) config.logger.error(String(error), { timestamp: true });
+  };
   const build = oneAtATime(async () => {
+    if (stop.signal.aborted) return;
     const start = performance.now();
     await buildWasm(stop.signal);
     const seconds = ((performance.now() - start) / 1000).toFixed(1);
@@ -117,15 +122,21 @@ function runArgs(image: string) {
   return [
     "run", "--rm", "--init",
     "-e", "TINI_KILL_PROCESS_GROUP=1",
-    "-v", `${REPO}:/src:ro`,
-    "-v", `${OUT_DIR}:/out`,
-    "-v", `tmaps-canvas-target:${CONTAINER_TARGET_DIR}`,
-    "-v", "tmaps-canvas-registry:/usr/local/cargo/registry",
+    "--mount", mount("bind", REPO, "/src", "readonly"),
+    "--mount", mount("bind", OUT_DIR, "/out"),
+    "--mount", mount("volume", "tmaps-canvas-target", CONTAINER_TARGET_DIR),
+    "--mount", mount("volume", "tmaps-canvas-registry", "/usr/local/cargo/registry"),
     "-w", "/src",
     "-e", `CARGO_TARGET_DIR=${CONTAINER_TARGET_DIR}`,
     image,
     "sh", "-c", steps.join(" && "),
   ];
+}
+
+// Docker reads --mount as CSV, so a quoted field keeps a comma in a path. -v also splits on ":".
+function mount(type: "bind" | "volume", source: string, target: string, ...options: string[]) {
+  const quote = (field: string) => `"${field.replaceAll('"', '""')}"`;
+  return [`type=${type}`, quote(`src=${source}`), `dst=${target}`, ...options].join(",");
 }
 
 async function run(
