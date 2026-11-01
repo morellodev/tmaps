@@ -1,0 +1,16 @@
+{
+  "name": "tmaps-canvas-demo",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "typecheck": "tsc -b",
+    "build": "vite build && tsc -b",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.5"
+  }
+}

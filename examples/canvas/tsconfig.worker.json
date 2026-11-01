@@ -1,0 +1,9 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.worker.tsbuildinfo",
+    "lib": ["ES2024", "ESNext.Disposable", "WebWorker"],
+    "types": []
+  },
+  "include": ["src/worker.ts", "src/messages.ts", "src/errors.ts", "src/worker-globals.d.ts"]
+}

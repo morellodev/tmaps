@@ -1,0 +1,5 @@
+packages:
+  - examples/*
+
+catalog:
+  "@types/node": ^26.6.6

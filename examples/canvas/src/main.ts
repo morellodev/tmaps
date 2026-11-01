@@ -1,4 +1,6 @@
-import init, { WebMap } from "./pkg/tmaps_canvas.js";
+import init, { WebMap } from "../pkg/tmaps_canvas.js";
+import { describe } from "./errors.ts";
+import type { FromWorker, TilePath, TileResult, TileSetResult } from "./messages.ts";
 
 const TILEJSON = "https://tiles.openfreemap.org/planet";
 const OSM_COPYRIGHT = "https://www.openstreetmap.org/copyright";
@@ -6,30 +8,38 @@ const START = { lat: 45.46, lon: 9.19, zoom: 12 };
 const KEY_PAN = 100;
 const KEY_ZOOM = 0.5;
 
-const canvas = document.querySelector("#map");
-const status = document.querySelector("#status");
-const attribution = document.querySelector("#attribution");
+function element<T extends Element>(selector: string, type: new () => T): T {
+  const found = document.querySelector(selector);
+  if (!(found instanceof type)) throw new Error(`The page has no ${selector} element`);
+  return found;
+}
 
-function showError(message) {
+const canvas = element("#map", HTMLCanvasElement);
+const status = element("#status", HTMLOutputElement);
+const attribution = element("#attribution", HTMLElement);
+
+function showError(message: string) {
   status.value = message;
   status.classList.replace("visually-hidden", "error");
 }
 
-// The page compiles the module once and gives it to the workers, so that they do not fetch and
-// compile it again.
-const wasm = WebAssembly.compileStreaming(fetch(new URL("pkg/tmaps_canvas_bg.wasm", import.meta.url)));
+// The page compiles the module one time and sends it to the workers, so that they do not
+// download and compile it again.
+const wasm = WebAssembly.compileStreaming(fetch(new URL("../pkg/tmaps_canvas_bg.wasm", import.meta.url)));
+
+type WorkerEntry = { worker: Worker; jobs: number };
 
 // Workers fetch and prepare the TileJSON document and the tiles, so that the main thread only
 // draws. Half of the cores, as in MapLibre: the main thread and the browser use the others.
 const WORKER_COUNT = Math.min(4, Math.max(1, Math.floor(navigator.hardwareConcurrency / 2)));
-const tileSet = Promise.withResolvers();
-const workers = Array.from({ length: WORKER_COUNT }, () => {
-  const worker = new Worker(new URL("worker.js", import.meta.url), { type: "module" });
+const tileSet = Promise.withResolvers<TileSetResult>();
+const workers = Array.from({ length: WORKER_COUNT }, (): WorkerEntry => {
+  const worker = new Worker(new URL("./worker.ts", import.meta.url), { type: "module" });
   const entry = { worker, jobs: 0 };
-  worker.addEventListener("message", ({ data }) => {
+  worker.addEventListener("message", ({ data }: MessageEvent<FromWorker>) => {
     if (data.type === "tile") tileArrived(entry, data);
     else if (data.type === "tileset") tileSet.resolve(data);
-    else if (data.type === "failed") showError(`The map cannot load tiles: ${data.error}`);
+    else showError(`The map cannot load tiles: ${data.error}`);
   });
   worker.addEventListener("messageerror", () => console.warn("A message from a tile worker cannot be read"));
   worker.addEventListener("error", (event) => {
@@ -39,14 +49,14 @@ const workers = Array.from({ length: WORKER_COUNT }, () => {
 });
 workers[0].worker.postMessage({ type: "tileset", url: TILEJSON });
 
-let map;
+let map: WebMap;
 try {
   const module = await wasm;
   await init({ module_or_path: module });
   map = new WebMap(canvas);
-  for (const { worker } of workers) worker.postMessage({ type: "init", module, lang: navigator.language });
+  for (const { worker } of workers) worker.postMessage({ type: "init", module });
 } catch (error) {
-  showError(`The map cannot start: ${error.message}`);
+  showError(`The map cannot start: ${describe(error)}`);
   throw error;
 }
 
@@ -77,20 +87,23 @@ function redraw() {
   });
 }
 
-const arrived = [];
+type Tile = { z: number; x: number; y: number };
+type ArrivedTile = Tile & { labels: Uint8Array; paths: TilePath[] };
+
+const arrived: ArrivedTile[] = [];
 // Each fetch of a tile is a job with its own number, so that a late result of a cancelled job
 // cannot close a newer job for the same tile.
-const jobs = new Map();
-const tiles = new Map();
+const jobs = new Map<number, { entry: WorkerEntry; key: string; tile: Tile }>();
+const tiles = new Map<string, number>();
 let lastJob = 0;
 
-function tileArrived(entry, result) {
+function tileArrived(entry: WorkerEntry, result: TileResult) {
   const job = jobs.get(result.job);
   if (!job) return;
   jobs.delete(result.job);
   tiles.delete(job.key);
   entry.jobs -= 1;
-  if (result.error) {
+  if ("error" in result) {
     console.warn(`Tile ${job.key} failed: ${result.error}`);
     return;
   }
@@ -104,19 +117,22 @@ function requestTiles() {
     const key = stale.slice(i, i + 3).join("/");
     const id = tiles.get(key);
     if (id === undefined) continue;
-    const { entry } = jobs.get(id);
-    entry.worker.postMessage({ type: "cancel", job: id });
-    entry.jobs -= 1;
+    const job = jobs.get(id);
+    if (!job) continue;
+    job.entry.worker.postMessage({ type: "cancel", job: id });
+    job.entry.jobs -= 1;
     jobs.delete(id);
     tiles.delete(key);
   }
   const missing = map.missing_tiles();
   for (let i = 0; i < missing.length; i += 3) {
     const [z, x, y] = missing.slice(i, i + 3);
+    const url = map.tile_url(z, x, y);
+    if (url === undefined) continue;
     const key = `${z}/${x}/${y}`;
     const entry = workers.reduce((least, each) => (each.jobs < least.jobs ? each : least));
     const id = ++lastJob;
-    entry.worker.postMessage({ type: "tile", job: id, url: map.tile_url(z, x, y) });
+    entry.worker.postMessage({ type: "tile", job: id, url });
     entry.jobs += 1;
     jobs.set(id, { entry, key, tile: { z, x, y } });
     tiles.set(key, id);
@@ -125,7 +141,7 @@ function requestTiles() {
 
 // A frame adds only the tiles that fit in its budget, and leaves the rest to the next frames.
 const TILE_BUDGET_MS = 4;
-function addArrivedTiles(start) {
+function addArrivedTiles(start: number) {
   do {
     const tile = arrived.shift();
     if (!tile) return;
@@ -156,15 +172,17 @@ function describeView() {
 const GLIDE_HALF_LIFE_MS = 50;
 const GLIDE_MAX = { pan: 3 * KEY_PAN, zoom: 3 };
 const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
-const glide = { dx: 0, dy: 0, zoom: 0, x: 0, y: 0, time: null };
+const glide = { dx: 0, dy: 0, zoom: 0, x: 0, y: 0, time: null as number | null };
 
-function glideBy({ dx = 0, dy = 0, zoom = 0, x = 0, y = 0 }) {
+type GlideStep = { dx?: number; dy?: number; zoom?: number; x?: number; y?: number };
+
+function glideBy({ dx = 0, dy = 0, zoom = 0, x = 0, y = 0 }: GlideStep) {
   if (reducedMotion.matches) {
     map.pan_by(dx, dy);
     if (zoom) map.zoom_at(zoom, x, y);
   } else {
     glide.time ??= performance.now();
-    const limit = (value, max) => Math.min(max, Math.max(-max, value));
+    const limit = (value: number, max: number) => Math.min(max, Math.max(-max, value));
     glide.dx = limit(glide.dx + dx, GLIDE_MAX.pan);
     glide.dy = limit(glide.dy + dy, GLIDE_MAX.pan);
     if (zoom) Object.assign(glide, { zoom: limit(glide.zoom + zoom, GLIDE_MAX.zoom), x, y });
@@ -176,15 +194,15 @@ function stopGlide() {
   Object.assign(glide, { dx: 0, dy: 0, zoom: 0, time: null });
 }
 
-function stepGlide(now) {
-  if (!glide.dx && !glide.dy && !glide.zoom) {
+function stepGlide(now: number) {
+  if (glide.time === null || (!glide.dx && !glide.dy && !glide.zoom)) {
     glide.time = null;
     return;
   }
   // A frame can start before the key press, so its time can be earlier.
   const part = 1 - 0.5 ** (Math.max(0, now - glide.time) / GLIDE_HALF_LIFE_MS);
   glide.time = Math.max(now, glide.time);
-  const take = (key, last) => {
+  const take = (key: "dx" | "dy" | "zoom", last: number) => {
     const step = Math.abs(glide[key]) < last ? glide[key] : glide[key] * part;
     glide[key] -= step;
     return step;
@@ -195,7 +213,9 @@ function stepGlide(now) {
   redraw();
 }
 
-const pointers = new Map();
+type Point = { x: number; y: number };
+
+const pointers = new Map<number, Point>();
 canvas.addEventListener("pointerdown", (event) => {
   if (event.button !== 0 || pointers.size === 2) return;
   pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
@@ -206,24 +226,21 @@ canvas.addEventListener("pointermove", (event) => {
   if (!last || (event.clientX === last.x && event.clientY === last.y)) return;
   const next = { x: event.clientX, y: event.clientY };
   stopGlide();
-  if (pointers.size === 1) {
-    map.pan_by(last.x - next.x, last.y - next.y);
-  } else {
-    const [, still] = [...pointers].find(([id]) => id !== event.pointerId);
-    pinch(still, last, next);
-  }
+  const other = [...pointers].find(([id]) => id !== event.pointerId);
+  if (other) pinch(other[1], last, next);
+  else map.pan_by(last.x - next.x, last.y - next.y);
   pointers.set(event.pointerId, next);
   redraw();
 });
-for (const type of ["pointerup", "pointercancel"]) {
+for (const type of ["pointerup", "pointercancel"] as const) {
   canvas.addEventListener(type, (event) => pointers.delete(event.pointerId));
 }
 
 // The point under the middle of the two fingers follows the middle, and the zoom follows the
 // distance between the fingers: two times the distance is one zoom level.
-function pinch(still, from, to) {
+function pinch(still: Point, from: Point, to: Point) {
   const box = canvas.getBoundingClientRect();
-  const middle = (a, b) => ({ x: (a.x + b.x) / 2 - box.left, y: (a.y + b.y) / 2 - box.top });
+  const middle = (a: Point, b: Point) => ({ x: (a.x + b.x) / 2 - box.left, y: (a.y + b.y) / 2 - box.top });
   const [before, after] = [middle(still, from), middle(still, to)];
   map.pan_by(before.x - after.x, before.y - after.y);
   const spread = Math.hypot(to.x - still.x, to.y - still.y) / Math.hypot(from.x - still.x, from.y - still.y);
@@ -235,7 +252,10 @@ canvas.addEventListener(
   (event) => {
     event.preventDefault();
     stopGlide();
-    const unit = { [WheelEvent.DOM_DELTA_LINE]: 16, [WheelEvent.DOM_DELTA_PAGE]: canvas.clientHeight };
+    const unit: Record<number, number> = {
+      [WheelEvent.DOM_DELTA_LINE]: 16,
+      [WheelEvent.DOM_DELTA_PAGE]: canvas.clientHeight,
+    };
     // Trackpad pinches come as wheel events with ctrlKey and small deltas.
     const speed = event.ctrlKey ? 0.01 : 0.002;
     map.zoom_at(-event.deltaY * (unit[event.deltaMode] ?? 1) * speed, event.offsetX, event.offsetY);
@@ -250,7 +270,7 @@ canvas.addEventListener("dblclick", (event) => {
 
 canvas.addEventListener("keydown", (event) => {
   const center = { x: canvas.clientWidth / 2, y: canvas.clientHeight / 2 };
-  const steps = {
+  const steps: Record<string, GlideStep> = {
     ArrowLeft: { dx: -KEY_PAN },
     ArrowRight: { dx: KEY_PAN },
     ArrowUp: { dy: -KEY_PAN },
@@ -281,7 +301,7 @@ function watchPixelRatio() {
 watchPixelRatio();
 
 // The TileJSON attribution is HTML from the network: copy only its text and its web links.
-function showAttribution(html) {
+function showAttribution(html: string) {
   const parts = copyCredits(new DOMParser().parseFromString(html, "text/html").body);
   const namesOsm = parts.some((part) =>
     typeof part === "string"
@@ -293,10 +313,10 @@ function showAttribution(html) {
 }
 
 const HIDDEN_TEXT = new Set(["STYLE", "SCRIPT", "TEMPLATE", "TEXTAREA", "NOSCRIPT"]);
-function copyCredits(parent) {
+function copyCredits(parent: Node): (string | HTMLAnchorElement)[] {
   return [...parent.childNodes].flatMap((node) => {
-    if (node.nodeType === Node.TEXT_NODE) return [node.data];
-    if (node.nodeType !== Node.ELEMENT_NODE || HIDDEN_TEXT.has(node.tagName)) return [];
+    if (node instanceof Text) return [node.data];
+    if (!(node instanceof Element) || HIDDEN_TEXT.has(node.tagName)) return [];
     if (node.tagName !== "A") return copyCredits(node);
     const href = webUrl(node.getAttribute("href"));
     return [href ? link(href, node.textContent) : node.textContent];
@@ -304,7 +324,7 @@ function copyCredits(parent) {
 }
 
 // Relative links in the credit point to the tile server, not to this page.
-function webUrl(href) {
+function webUrl(href: string | null) {
   if (href === null) return null;
   try {
     const url = new URL(href, TILEJSON);
@@ -314,7 +334,7 @@ function webUrl(href) {
   }
 }
 
-function link(href, text) {
+function link(href: string, text: string) {
   const anchor = document.createElement("a");
   anchor.href = href;
   anchor.target = "_blank";
@@ -323,13 +343,13 @@ function link(href, text) {
 }
 
 try {
-  const { json, attribution, error } = await tileSet.promise;
-  if (error) throw new Error(error);
-  map.set_tile_set(json);
-  showAttribution(attribution);
+  const result = await tileSet.promise;
+  if ("error" in result) throw new Error(result.error);
+  map.set_tile_set(result.json);
+  showAttribution(result.attribution);
   redraw();
 } catch (error) {
-  showError(`The map server is not available: ${error.message}`);
+  showError(`The map server is not available: ${describe(error)}`);
   showAttribution("");
   map.draw(performance.now());
 }
