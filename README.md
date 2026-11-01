@@ -105,7 +105,7 @@ docker run --rm -v "$PWD":/src:ro -w /src -e CARGO_TARGET_DIR=/tmp/target -e CI=
 docker run --rm -v "$PWD":/src:ro -w /src -e CARGO_TARGET_DIR=/tmp/target rust:<rust-version>-slim sh -c "rustup target add wasm32-unknown-unknown && cargo check -p tmaps-core -p tmaps-braille --target wasm32-unknown-unknown --locked"
 ```
 
-`tmaps-canvas` draws the map on an HTML canvas. The demo page in `examples/canvas/` uses Vite and needs pnpm and Docker. pnpm downloads the Node version that `devEngines` in its `package.json` gives. To start it, run these commands:
+`tmaps-canvas` draws the map on an HTML canvas. The demo page in `examples/canvas/` uses Vite and needs pnpm and Docker. pnpm downloads the pnpm and Node versions that `devEngines` in the root `package.json` gives. To start it, run these commands:
 
 ```sh
 pnpm install

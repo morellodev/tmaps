@@ -10,15 +10,8 @@
     "preview": "vite preview"
   },
   "devDependencies": {
-    "@types/node": "^24.19.2",
+    "@types/node": "catalog:",
     "typescript": "^7.0.2",
     "vite": "^8.3.5"
-  },
-  "devEngines": {
-    "runtime": {
-      "name": "node",
-      "version": "24.x",
-      "onFail": "download"
-    }
   }
 }

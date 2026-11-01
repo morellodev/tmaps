@@ -1,0 +1,15 @@
+{
+  "private": true,
+  "devEngines": {
+    "runtime": {
+      "name": "node",
+      "version": "^26.13.0",
+      "onFail": "download"
+    },
+    "packageManager": {
+      "name": "pnpm",
+      "version": "^12.17.0",
+      "onFail": "download"
+    }
+  }
+}
