@@ -3335,7 +3335,7 @@ checksum = "fd3ca314f692efd6c868f8408f53fe444634a845f96c028b97d35f6a1f79f0ee"
 
 [[package]]
 name = "tmaps"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "assert_cmd",
  "clap",
@@ -3370,7 +3370,7 @@ dependencies = [
 
 [[package]]
 name = "tmaps-braille"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "insta",
  "tmaps-core",
@@ -3380,7 +3380,7 @@ dependencies = [
 
 [[package]]
 name = "tmaps-canvas"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "js-sys",
  "tmaps-core",
@@ -3390,7 +3390,7 @@ dependencies = [
 
 [[package]]
 name = "tmaps-core"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "geo-types",
  "polyline",

@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0](https://github.com/morellodev/tmaps/compare/v0.1.0...v0.2.0) - 2026-11-01
+
+### Added
+
+- add an HTML canvas renderer for the web ([#13](https://github.com/morellodev/tmaps/pull/13))
+
+### Other
+
+- extract the braille renderer into tmaps-braille ([#12](https://github.com/morellodev/tmaps/pull/12))
+- move I/O out of tmaps-core ([#11](https://github.com/morellodev/tmaps/pull/11))
+- merge tmaps-tui into tmaps ([#10](https://github.com/morellodev/tmaps/pull/10))
+
 ## [0.1.0](https://github.com/morellodev/tmaps/releases/tag/v0.1.0) - 2026-10-30
 
 ### Added
