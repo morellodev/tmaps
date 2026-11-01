@@ -57,10 +57,13 @@ jobs:
           cache: true
           require-lockfile: true
       # rust:<rust-version>-slim follows patch releases, and a new rustc makes the cached build stale.
+      # The image config gives the full version without a pull of the image.
       - id: rustc
         run: |
           rust_version=$(sed -n 's/^rust-version = "\(.*\)"$/\1/p' Cargo.toml)
-          echo "version=$(docker run --rm "rust:${rust_version}-slim" rustc --version | cut -d ' ' -f 2)" >> "$GITHUB_OUTPUT"
+          env=$(docker buildx imagetools inspect "rust:${rust_version}-slim" \
+            --format '{{ range (index .Image "linux/amd64").Config.Env }}{{ println . }}{{ end }}')
+          echo "version=$(sed -n 's/^RUST_VERSION=//p' <<< "${env}")" >> "$GITHUB_OUTPUT"
       # The wasm build runs in Docker, so rust-cache cannot see its cargo cache.
       - id: wasm-cache
         uses: actions/cache/restore@v5
