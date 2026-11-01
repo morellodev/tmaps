@@ -18,18 +18,10 @@ changelog_include = ["tmaps-core", "tmaps-braille"]
 git_tag_enable = true
 git_release_enable = true
 
-# release-plz 0.4.2 stops when a git_only package is missing at its last tag, and these packages
-# came after v0.1.0. They are not released, so the registry lookup does not matter.
-[[package]]
-name = "tmaps-braille"
-release = false
-git_only = false
-
 # The web demo ships as a page, not as a release.
 [[package]]
 name = "tmaps-canvas"
 release = false
-git_only = false
 
 [changelog]
 commit_parsers = [
