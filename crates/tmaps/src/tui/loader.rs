@@ -2,9 +2,10 @@ use std::collections::HashSet;
 use std::sync::{Arc, Mutex, PoisonError};
 
 use tmaps_core::render::PreparedTile;
-use tmaps_core::tiles::{TileId, TileSource};
+use tmaps_core::tiles::TileId;
 use tokio::sync::{Semaphore, mpsc};
 
+use crate::tiles::TileSource;
 use crate::tui::message::{Message, Server, SourceInfo, describe};
 
 /// More parallel requests than a browser makes to one host would be unfair to a free server.

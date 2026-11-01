@@ -91,7 +91,7 @@ impl Layer {
 impl Tile {
     /// # Errors
     ///
-    /// [`Error::Provider`] if `bytes` is not a valid vector tile.
+    /// [`Error::InvalidData`] if `bytes` is not a valid vector tile.
     pub fn decode(bytes: &[u8]) -> Result<Self> {
         let tile = proto::Tile::decode(bytes).map_err(|error| invalid(&error))?;
         let layers = tile.layers.into_iter().map(Layer::from_proto).collect();
@@ -102,7 +102,7 @@ impl Tile {
     ///
     /// # Errors
     ///
-    /// [`Error::Provider`] if `bytes` is not a valid vector tile.
+    /// [`Error::InvalidData`] if `bytes` is not a valid vector tile.
     pub fn decode_layers(bytes: &[u8], keep: impl Fn(&str) -> bool) -> Result<Self> {
         let raw = proto::RawTile::decode(bytes).map_err(|error| invalid(&error))?;
         let mut layers = Vec::new();
@@ -121,7 +121,7 @@ impl Tile {
 }
 
 fn invalid(error: &prost::DecodeError) -> Error {
-    Error::Provider(format!("invalid vector tile: {error}"))
+    Error::InvalidData(format!("invalid vector tile: {error}"))
 }
 
 impl Layer {

@@ -1,8 +1,9 @@
 use std::assert_matches;
 
-use tmaps_core::providers::valhalla::Valhalla;
-use tmaps_core::routing::{Maneuver, Mode, Route, RouteRequest};
-use tmaps_core::{Error, LatLon, http};
+use tmaps::providers::valhalla::Valhalla;
+use tmaps::routing::{Maneuver, Mode, Route, RouteRequest};
+use tmaps::{Error, http};
+use tmaps_core::LatLon;
 use wiremock::matchers::{body_partial_json, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 

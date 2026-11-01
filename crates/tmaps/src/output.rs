@@ -3,11 +3,11 @@
 use schemars::{JsonSchema, Schema, schema_for};
 use serde::Serialize;
 use tmaps_core::LatLon;
-use tmaps_core::geocode::Place;
-use tmaps_core::routing::{Mode, Route};
 
 use crate::error::CliError;
+use crate::geocode::Place;
 use crate::location::Resolved;
+use crate::routing::{Mode, Route};
 use crate::time::DateTime;
 
 pub const GEOCODE_SCHEMA: &str = "tmaps/geocode@1";

@@ -4,9 +4,11 @@ use std::fs::{self, File};
 use std::io::{self, ErrorKind};
 use std::path::{Path, PathBuf};
 
-use crate::file::write_atomically;
-use crate::{Error, LatLon, Result};
+use tmaps_core::LatLon;
 use toml_edit::{DocumentMut, TableLike};
+
+use crate::file::write_atomically;
+use crate::{Error, Result};
 
 /// Saves `location` as `name`, and replaces a place with the same name.
 ///

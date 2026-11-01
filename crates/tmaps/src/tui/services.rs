@@ -5,15 +5,16 @@ use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
 use lru::LruCache;
-use tmaps_core::geocode::{Place, SearchOptions};
-use tmaps_core::places;
-use tmaps_core::providers::photon::Photon;
-use tmaps_core::providers::valhalla::Valhalla;
-use tmaps_core::routing::{Mode, RouteRequest};
-use tmaps_core::{Error, LatLon};
+use tmaps_core::LatLon;
 use tokio::sync::mpsc;
 use tokio::task::AbortHandle;
 
+use crate::Error;
+use crate::geocode::{Place, SearchOptions};
+use crate::places;
+use crate::providers::photon::Photon;
+use crate::providers::valhalla::Valhalla;
+use crate::routing::{Mode, RouteRequest};
 use crate::tui::message::{Message, Server, describe, no_route};
 
 const ALTERNATIVES: u8 = 2;
@@ -234,7 +235,7 @@ mod tests {
             .respond_with(ResponseTemplate::new(500))
             .mount(&server)
             .await;
-        let client = tmaps_core::http::client().unwrap();
+        let client = crate::http::client().unwrap();
         let (sender, mut receiver) = mpsc::unbounded_channel();
         let services = Services::new(
             Photon::new(client.clone(), &server.uri()),
@@ -271,7 +272,7 @@ mod tests {
     #[tokio::test]
     async fn removal_of_a_place_that_the_file_does_not_have_succeeds() {
         let directory = tempfile::tempdir().unwrap();
-        let client = tmaps_core::http::client().unwrap();
+        let client = crate::http::client().unwrap();
         let (sender, mut receiver) = mpsc::unbounded_channel();
         let services = Services::new(
             Photon::new(client.clone(), "http://localhost"),

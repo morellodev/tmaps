@@ -6,8 +6,9 @@ use std::str::FromStr;
 
 use etcetera::BaseStrategy;
 use serde::{Deserialize, Serialize};
+use tmaps_core::LatLon;
 
-use crate::{Error, LatLon, Result};
+use crate::{Error, Result};
 
 const APP_NAME: &str = "tmaps";
 const DEFAULT_LANG: &str = "en-US";

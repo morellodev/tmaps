@@ -4,7 +4,8 @@ use jiff::civil::{self, Time};
 use jiff::{SignedDuration, Timestamp, Zoned};
 use schemars::{JsonSchema, Schema, SchemaGenerator, json_schema};
 use serde::{Serialize, Serializer};
-use tmaps_core::Error;
+
+use crate::Error;
 
 /// Accepts RFC 3339, or a civil date-time or time of day in the time zone of `now`.
 pub fn parse_depart_at(text: &str, now: &Zoned) -> Result<Zoned, String> {

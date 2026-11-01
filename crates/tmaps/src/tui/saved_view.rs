@@ -4,8 +4,9 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 use tmaps_core::LatLon;
-use tmaps_core::file::write_atomically;
 use tmaps_core::render::View;
+
+use crate::file::write_atomically;
 
 const FILE_NAME: &str = "view.toml";
 const HOME_ZOOM: f64 = 14.0;

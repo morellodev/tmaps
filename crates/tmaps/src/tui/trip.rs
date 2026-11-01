@@ -1,8 +1,8 @@
 use std::mem;
 
 use tmaps_core::LatLon;
-use tmaps_core::routing::{Mode, Route};
 
+use crate::routing::{Mode, Route};
 use crate::tui::message::no_route;
 use crate::tui::services::Request;
 
@@ -259,7 +259,7 @@ impl Trip {
 /// A route of 1 km in 2 minutes, with one step at each of `steps`, along a line through them.
 #[cfg(test)]
 pub fn sample_route(steps: &[LatLon]) -> Route {
-    use tmaps_core::routing::{Maneuver, Step};
+    use crate::routing::{Maneuver, Step};
 
     Route {
         distance_m: 1000.0,

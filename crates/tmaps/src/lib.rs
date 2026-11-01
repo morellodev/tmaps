@@ -1,10 +1,19 @@
 //! The `tmaps` command line: geocoding, routes, ETAs, and saved places, for people and AI agents.
 
 mod args;
+pub mod config;
 mod error;
+pub mod file;
+pub mod format;
+pub mod geocode;
+pub mod http;
 mod location;
 mod output;
+pub mod places;
+pub mod providers;
+pub mod routing;
 mod text;
+pub mod tiles;
 mod time;
 mod tui;
 
@@ -16,16 +25,14 @@ use std::process::ExitCode;
 use clap::Parser;
 use jiff::Zoned;
 use serde::Serialize;
-use tmaps_core::config::{Config, Paths, Units};
 use tmaps_core::geo::encode_polyline6;
-use tmaps_core::geocode::SearchOptions;
-use tmaps_core::providers::photon::Photon;
-use tmaps_core::providers::valhalla::Valhalla;
-use tmaps_core::routing::{Route, RouteRequest};
-use tmaps_core::{ATTRIBUTION, Error, LatLon, http, places};
+use tmaps_core::{ATTRIBUTION, LatLon};
 
 use crate::args::{Cli, Command, Format, GeometryFormat, PlacesAction, RouteArgs, TripArgs};
+use crate::config::{Config, Paths, Units};
 use crate::error::CliError;
+pub use crate::error::{Error, Result};
+use crate::geocode::SearchOptions;
 use crate::location::{Resolved, Resolver};
 pub use crate::output::schemas;
 use crate::output::{
@@ -33,6 +40,9 @@ use crate::output::{
     PLACES_SCHEMA, PlacesDoc, REVERSE_SCHEMA, ROUTE_SCHEMA, ReverseDoc, RouteDoc, RouteItem,
     SavedPlace, TRAFFIC,
 };
+use crate::providers::photon::Photon;
+use crate::providers::valhalla::Valhalla;
+use crate::routing::{Route, RouteRequest};
 use crate::text::Render;
 use crate::time::DateTime;
 

@@ -1,17 +1,10 @@
-//! Geocoding, routing, and configuration for tmaps, shared by the TUI and the CLI.
+//! The map engine of tmaps: geo types, vector tiles, projection, map classes, and labels. It does
+//! no I/O, so that every renderer can use it, also in WebAssembly.
 
-pub mod config;
 pub mod error;
-pub mod file;
-pub mod format;
 pub mod geo;
-pub mod geocode;
-pub mod http;
 pub mod mvt;
-pub mod places;
-pub mod providers;
 pub mod render;
-pub mod routing;
 pub mod tiles;
 
 pub use error::{Error, Result};

@@ -8,11 +8,10 @@ use tempfile::TempDir;
 use wiremock::matchers::{body_partial_json, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
-const PHOTON_SEARCH: &str = include_str!("../../tmaps-core/tests/fixtures/photon_search.json");
-const PHOTON_REVERSE: &str = include_str!("../../tmaps-core/tests/fixtures/photon_reverse.json");
-const VALHALLA_ROUTE: &str = include_str!("../../tmaps-core/tests/fixtures/valhalla_route.json");
-const VALHALLA_NO_ROUTE: &str =
-    include_str!("../../tmaps-core/tests/fixtures/valhalla_error_154.json");
+const PHOTON_SEARCH: &str = include_str!("fixtures/photon_search.json");
+const PHOTON_REVERSE: &str = include_str!("fixtures/photon_reverse.json");
+const VALHALLA_ROUTE: &str = include_str!("fixtures/valhalla_route.json");
+const VALHALLA_NO_ROUTE: &str = include_str!("fixtures/valhalla_error_154.json");
 /// Two matches 250 km apart: the cathedrals of Milan and Florence.
 const PHOTON_SEARCH_FAR_APART: &str = r#"{"type":"FeatureCollection","features":[
 {"type":"Feature","properties":{"name":"Duomo di Milano","city":"Milano"},"geometry":{"type":"Point","coordinates":[9.1916,45.4642]}},
@@ -355,6 +354,24 @@ mod errors {
         let output = env.run(&["places", "list", "--lang", "not a tag"]);
 
         assert_eq!(json(&output.stderr)["error"]["kind"], "usage");
+    }
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn coordinates_out_of_range_are_invalid_input() {
+        let env = Env::new().await;
+
+        let output = env.run(&["route", "--from", "91,0", "--to", FROM]);
+
+        assert_eq!(
+            (output.status.code(), json(&output.stderr)["error"].clone()),
+            (
+                Some(2),
+                serde_json::json!({
+                    "kind": "invalid_input",
+                    "message": "invalid input: coordinates out of range: 91,0",
+                })
+            )
+        );
     }
 
     #[tokio::test(flavor = "multi_thread")]

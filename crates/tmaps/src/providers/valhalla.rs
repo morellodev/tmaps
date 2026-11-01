@@ -1,10 +1,11 @@
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
+use tmaps_core::LatLon;
 
 use crate::http::{Throttle, body_snippet};
 use crate::routing::{Maneuver, Mode, Route, RouteRequest, Step};
-use crate::{Error, LatLon, Result};
+use crate::{Error, Result};
 
 const POLYLINE_PRECISION: u32 = 6;
 /// The public FOSSGIS server asks for at most about one request per second.
@@ -256,7 +257,7 @@ fn decode_shape(encoded: &str) -> Result<Vec<LatLon>> {
         .map_err(|error| Error::Provider(format!("invalid Valhalla route shape: {error}")))?;
     line.0
         .into_iter()
-        .map(|coord| LatLon::new(coord.y, coord.x))
+        .map(|coord| Ok(LatLon::new(coord.y, coord.x)?))
         .collect()
 }
 

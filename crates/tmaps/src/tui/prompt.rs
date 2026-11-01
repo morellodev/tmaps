@@ -2,8 +2,9 @@ use std::ops::Range;
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use tmaps_core::LatLon;
-use tmaps_core::geocode::Place;
 use unicode_segmentation::UnicodeSegmentation;
+
+use crate::geocode::Place;
 
 /// A box over the map. While it is open, it takes the keys.
 #[derive(Debug)]

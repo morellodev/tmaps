@@ -3,11 +3,11 @@
 use std::fmt::Write;
 
 use jiff::Zoned;
-use tmaps_core::config::Units;
-use tmaps_core::format::{distance, duration};
-use tmaps_core::routing::Route;
 
+use crate::config::Units;
+use crate::format::{distance, duration};
 use crate::output::{EtaDoc, GeocodeDoc, PlacesDoc, ReverseDoc, RouteDoc};
+use crate::routing::Route;
 
 pub trait Render {
     fn render(&self, units: Units) -> String;

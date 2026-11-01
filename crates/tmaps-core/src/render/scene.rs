@@ -111,7 +111,7 @@ impl PreparedTile {
     ///
     /// # Errors
     ///
-    /// [`Error::Provider`](crate::Error::Provider) if `bytes` is not a valid vector tile.
+    /// [`Error::InvalidData`](crate::Error::InvalidData) if `bytes` is not a valid vector tile.
     pub fn decode(bytes: &[u8], lang: &str) -> Result<Self> {
         let uses = |name: &str| style::LAYERS.contains(&name) || label::LAYERS.contains(&name);
         Ok(Self::new(&mvt::Tile::decode_layers(bytes, uses)?, lang))

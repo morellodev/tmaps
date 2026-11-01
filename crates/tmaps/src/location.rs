@@ -2,11 +2,12 @@ use std::collections::BTreeMap;
 
 use schemars::JsonSchema;
 use serde::Serialize;
-use tmaps_core::geocode::{Place, SearchOptions};
-use tmaps_core::providers::photon::Photon;
-use tmaps_core::{Error, LatLon};
+use tmaps_core::LatLon;
 
+use crate::Error;
 use crate::error::CliError;
+use crate::geocode::{Place, SearchOptions};
+use crate::providers::photon::Photon;
 
 const STRICT_CANDIDATES: usize = 5;
 /// Matches closer than this to the top match are the same place for `--strict`, for example
