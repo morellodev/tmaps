@@ -22,7 +22,7 @@ use crate::format::{distance, duration};
 use crate::geocode::Place;
 use crate::places::validate_name;
 use crate::routing::{Maneuver, Mode, Route, Step};
-use crate::tui::app::{App, LAYER_KEYS, Level, cursor_cell};
+use crate::tui::app::{App, LAYER_KEY_RANGE, LAYER_KEYS, Level, cursor_cell};
 use crate::tui::palette::Palette;
 use crate::tui::prompt::{Input, Prompt};
 use crate::tui::regions::{ListRegion, Regions};
@@ -840,8 +840,8 @@ fn hints(app: &App, status: Status) -> &'static [Hint] {
     if app.help() {
         return &[("Esc", "close")];
     }
-    if app.layers_open() && app.prompt().is_none() {
-        return &[("1-6", "show or hide"), ("Esc", "close")];
+    if app.layers_open() {
+        return &[(LAYER_KEY_RANGE, "show or hide"), ("Esc", "close")];
     }
     match app.prompt() {
         Some(Prompt::Search(search)) if search.removing.is_some() => {
@@ -1316,15 +1316,9 @@ pub fn help_overflow(width: u16, height: u16) -> usize {
     rows.saturating_sub(usize::from(area.height.saturating_sub(2)))
 }
 
-fn layer_label(layer: Layer) -> &'static str {
-    match layer {
-        Layer::Roads => "Roads",
-        Layer::Transit => "Transit",
-        Layer::Buildings => "Buildings",
-        Layer::Nature => "Nature",
-        Layer::Boundaries => "Boundaries",
-        Layer::Labels => "Labels",
-    }
+fn layer_label(layer: Layer) -> String {
+    let (first, rest) = layer.name().split_at(1);
+    first.to_ascii_uppercase() + rest
 }
 
 /// Draws the layer box at the top right of the map, so that the prompt and, on a wide map, the

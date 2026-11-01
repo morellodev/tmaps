@@ -158,6 +158,13 @@ impl Layers {
     pub fn shows_label(self, class: LabelClass) -> bool {
         self.contains(Layer::Labels) && class.layer().is_none_or(|layer| self.contains(layer))
     }
+
+    #[must_use]
+    pub fn shows_the_labels_of(self, other: Self) -> bool {
+        LabelClass::ALL
+            .into_iter()
+            .all(|class| self.shows_label(class) == other.shows_label(class))
+    }
 }
 
 impl Default for Layers {
@@ -282,6 +289,18 @@ mod tests {
     fn layers_without_a_hidden_layer_are_unchanged() {
         let layers = Layers::ALL.toggled(Layer::Roads);
         assert_eq!(layers.without(Layer::Roads), layers);
+    }
+
+    #[test]
+    fn layers_without_buildings_show_the_same_labels() {
+        let layers = Layers::ALL.toggled(Layer::Buildings);
+        assert!(layers.shows_the_labels_of(Layers::ALL));
+    }
+
+    #[test]
+    fn layers_without_roads_show_other_labels() {
+        let layers = Layers::ALL.toggled(Layer::Roads);
+        assert!(!layers.shows_the_labels_of(Layers::ALL));
     }
 
     #[test]

@@ -190,8 +190,11 @@ impl WebMap {
     /// If `name` is not the name of a layer.
     pub fn set_layer(&mut self, name: &str, visible: bool) -> Result<(), JsValue> {
         let layer: Layer = name.parse().map_err(js)?;
-        if self.layers.contains(layer) != visible {
-            self.layers = self.layers.toggled(layer);
+        let before = self.layers;
+        if before.contains(layer) != visible {
+            self.layers = before.toggled(layer);
+        }
+        if !self.layers.shows_the_labels_of(before) {
             self.placement = None;
         }
         Ok(())
@@ -316,7 +319,7 @@ impl WebMap {
                 ratio,
                 palette,
                 dark: self.dark,
-                layers: self.layers,
+                cell_layers: cell_layers(self.layers),
                 settled,
                 restyled,
             },
@@ -582,7 +585,7 @@ struct Frame {
     ratio: f64,
     palette: Palette,
     dark: bool,
-    layers: Layers,
+    cell_layers: Layers,
     /// The zoom did not change for [`SETTLE_MS`].
     settled: bool,
     /// The palette or the layers changed, so that all cells are drawn at once and the old and new
@@ -618,7 +621,7 @@ fn draw_cells(
         zoom,
         ratio,
         dark: frame.dark,
-        layers: cell_layers(frame.layers),
+        layers: frame.cell_layers,
     };
     rasters.begin_frame();
     let mut jobs: Vec<_> = cells

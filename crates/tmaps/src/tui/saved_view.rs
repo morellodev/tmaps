@@ -2,7 +2,8 @@ use std::fs;
 use std::io;
 use std::path::Path;
 
-use serde::{Deserialize, Serialize};
+use serde::de::IgnoredAny;
+use serde::{Deserialize, Deserializer, Serialize};
 use tmaps_core::LatLon;
 use tmaps_core::style::{Layer, Layers};
 use tmaps_core::view::View;
@@ -19,8 +20,26 @@ struct SavedView {
     lon: f64,
     zoom: f64,
     /// The file keeps the hidden layers, so that a layer of a newer version shows by default.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[serde(
+        default,
+        deserialize_with = "names_or_none",
+        skip_serializing_if = "Vec::is_empty"
+    )]
     hidden_layers: Vec<String>,
+}
+
+/// An invalid list of hidden layers shows all layers and keeps the saved view.
+fn names_or_none<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Vec<String>, D::Error> {
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum Names {
+        Valid(Vec<String>),
+        Invalid(IgnoredAny),
+    }
+    Ok(match Names::deserialize(deserializer)? {
+        Names::Valid(names) => names,
+        Names::Invalid(_) => Vec::new(),
+    })
 }
 
 impl SavedView {
@@ -30,10 +49,10 @@ impl SavedView {
     }
 
     fn layers(&self) -> Layers {
-        Layer::ALL
-            .into_iter()
-            .filter(|layer| !self.hidden_layers.iter().any(|name| name == layer.name()))
-            .collect()
+        self.hidden_layers
+            .iter()
+            .filter_map(|name| name.parse().ok())
+            .fold(Layers::ALL, Layers::without)
     }
 }
 
@@ -150,5 +169,17 @@ mod tests {
             initial(dir.path(), None).1,
             Layers::ALL.toggled(Layer::Nature)
         );
+    }
+
+    #[test]
+    fn initial_keeps_the_view_of_a_file_with_invalid_layers() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(
+            dir.path().join(FILE_NAME),
+            "lat = 45.0\nlon = 9.0\nzoom = 3.0\nhidden_layers = \"roads\"\n",
+        )
+        .unwrap();
+        let expected = (View::new(LatLon::new(45.0, 9.0).unwrap(), 3.0), Layers::ALL);
+        assert_eq!(initial(dir.path(), None), expected);
     }
 }

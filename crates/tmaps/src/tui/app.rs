@@ -45,6 +45,8 @@ pub const LAYER_KEYS: [(char, Layer); Layer::ALL.len()] = [
     ('5', Layer::Boundaries),
     ('6', Layer::Labels),
 ];
+/// The keys of [`LAYER_KEYS`], for a hint.
+pub const LAYER_KEY_RANGE: &str = "1-6";
 
 pub struct App {
     view: View,
@@ -1697,6 +1699,15 @@ mod tests {
         key(&mut app, KeyCode::Char('v'));
         key(&mut app, KeyCode::Char('6'));
         assert!(!app.layers().contains(Layer::Labels));
+    }
+
+    #[test]
+    fn layer_key_range_names_the_first_and_last_layer_keys() {
+        let keys = LAYER_KEYS.map(|(key, _)| key);
+        assert_eq!(
+            LAYER_KEY_RANGE,
+            format!("{}-{}", keys[0], keys[keys.len() - 1])
+        );
     }
 
     #[test]

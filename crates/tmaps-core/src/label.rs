@@ -16,6 +16,17 @@ pub enum LabelClass {
 }
 
 impl LabelClass {
+    pub const ALL: [Self; 8] = [
+        Self::Country,
+        Self::City,
+        Self::State,
+        Self::Town,
+        Self::Village,
+        Self::Suburb,
+        Self::Water,
+        Self::Road,
+    ];
+
     /// The layer that shows or hides the label. Labels without a layer always show.
     #[must_use]
     pub fn layer(self) -> Option<style::Layer> {
