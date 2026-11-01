@@ -3,6 +3,9 @@ use std::collections::{HashMap, HashSet};
 use tmaps_core::label::{Anchor, LabelCandidate, LabelClass};
 use tmaps_core::scene::{Rect, ScreenPoint, to_screen};
 use tmaps_core::view::VisibleTile;
+use unicode_segmentation::UnicodeSegmentation;
+
+use crate::line_text::{self, Cluster, Path, Run};
 
 /// Free space around each label box, in CSS pixels.
 const PADDING: f64 = 3.0;
@@ -28,6 +31,10 @@ const KEEP: f64 = 2.0;
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct LineAnchor {
     pub at: [f32; 2],
+    /// The index of the line in the lines of the label.
+    pub line: usize,
+    /// The distance from the start of the line to `at`, in tile widths.
+    pub along: f32,
     /// 0 for the middle of a line, 1 for its quarters, 2 for its eighths, and so on.
     pub level: u8,
     /// The distance to the nearest point of the same or a lower level, in tile widths.
@@ -44,16 +51,13 @@ pub fn line_anchors(candidate: &LabelCandidate) -> Vec<LineAnchor> {
         return Vec::new();
     };
     let mut anchors = Vec::new();
-    for line in lines {
-        let points: Vec<[f64; 2]> = line
-            .points()
-            .iter()
-            .map(|&[x, y]| [f64::from(x), f64::from(y)])
-            .collect();
-        let length: f64 = points
-            .windows(2)
-            .map(|pair| distance(pair[0], pair[1]))
-            .sum();
+    for (index, line) in lines.iter().enumerate() {
+        let path = Path::new(
+            line.points()
+                .iter()
+                .map(|&[x, y]| (f64::from(x), f64::from(y))),
+        );
+        let length = path.length();
         for level in 0..u8::MAX {
             let spacing = length / f64::from(2_u32 << level);
             if level > 0 && spacing < MIN_SPACING || length == 0.0 {
@@ -61,11 +65,13 @@ pub fn line_anchors(candidate: &LabelCandidate) -> Vec<LineAnchor> {
             }
             for step in (1..2_u32 << level).step_by(2) {
                 let along = f64::from(step) * spacing;
-                let at = point_along(&points, along);
-                if at.iter().all(|value| (0.0..1.0).contains(value)) {
+                let (x, y) = path.point_at(along);
+                if [x, y].iter().all(|value| (0.0..1.0).contains(value)) {
                     #[expect(clippy::cast_possible_truncation, reason = "tile fractions")]
                     anchors.push(LineAnchor {
-                        at: at.map(|value| value as f32),
+                        at: [x as f32, y as f32],
+                        line: index,
+                        along: along as f32,
                         level,
                         spacing: spacing as f32,
                         room: (2.0 * along.min(length - along)) as f32,
@@ -77,23 +83,6 @@ pub fn line_anchors(candidate: &LabelCandidate) -> Vec<LineAnchor> {
     anchors
 }
 
-fn distance(a: [f64; 2], b: [f64; 2]) -> f64 {
-    (b[0] - a[0]).hypot(b[1] - a[1])
-}
-
-fn point_along(points: &[[f64; 2]], mut along: f64) -> [f64; 2] {
-    for pair in points.windows(2) {
-        let step = distance(pair[0], pair[1]);
-        if step > 0.0 && along <= step {
-            let t = along / step;
-            let (a, b) = (pair[0], pair[1]);
-            return [a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1])];
-        }
-        along -= step;
-    }
-    points.last().copied().unwrap_or_default()
-}
-
 /// A label that a visible tile can show.
 #[derive(Debug, Clone, Copy)]
 pub struct Candidate<'a> {
@@ -103,13 +92,15 @@ pub struct Candidate<'a> {
     pub anchors: &'a [LineAnchor],
 }
 
-/// A label to draw, centered on `(x, y)`.
+/// A label to draw at `(x, y)`: its point, or its anchor on a line.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Placed<'a> {
     pub text: &'a str,
     pub class: LabelClass,
     pub x: f64,
     pub y: f64,
+    /// The parts of the text, in the order that they draw.
+    pub runs: Vec<Run>,
     /// The label is at its position in `shown`.
     pub kept: bool,
 }
@@ -121,12 +112,13 @@ pub struct Placed<'a> {
 /// these labels go first, and keep their position if they can. There, they can also go past the
 /// screen edge, which a label at a new position cannot.
 ///
-/// `measure` gives the width and height of a text, or `None` if it cannot.
+/// A label on a line follows the line. `size` gives the [`Size`] of a label text, or `None` if it
+/// cannot.
 pub fn place<'a>(
     candidates: impl IntoIterator<Item = Candidate<'a>>,
     screen: Rect,
     shown: &HashMap<&str, ScreenPoint>,
-    mut measure: impl FnMut(&str, LabelClass) -> Option<(f64, f64)>,
+    mut size: impl FnMut(&LabelCandidate) -> Option<Size>,
 ) -> Vec<Placed<'a>> {
     let mut candidates: Vec<_> = candidates.into_iter().collect();
     candidates.sort_by_key(|candidate| candidate.label.class);
@@ -138,9 +130,12 @@ pub fn place<'a>(
     };
     let mut placed = Vec::new();
     let mut texts = HashSet::new();
+    // A text has a candidate in each tile that it crosses, and each candidate can come twice.
+    // A point label has no clusters, so its size cannot serve a line label of the same text.
+    let mut sizes: HashMap<(&str, LabelClass, bool), Option<Size>> = HashMap::new();
     // Labels never overlap, so the screen size limits their count: a linear scan needs no
     // spatial index.
-    let mut taken: Vec<Rect> = Vec::new();
+    let mut taken: Vec<Collider> = Vec::new();
     for class in candidates.chunk_by(|a, b| a.label.class == b.label.class) {
         // A text can have more than one candidate, so all of them try to keep the last position
         // before one of them takes a new position.
@@ -151,29 +146,39 @@ pub fn place<'a>(
                 if texts.contains(label.text.as_str()) || keep && last.is_none() {
                     continue;
                 }
-                let Some((width, height)) = measure(&label.text, label.class) else {
+                let Some(size) = sizes
+                    .entry((label.text.as_str(), label.class, on_line(label)))
+                    .or_insert_with(|| size(label))
+                else {
                     continue;
                 };
-                let fits = |spot: ScreenPoint, area: Rect| {
-                    let label = around(spot, width, height);
-                    inside(label, area) && !taken.iter().any(|&other| overlaps(label, other))
+                let near = |spot: ScreenPoint| match last {
+                    Some(&last) if keep => squared(spot, last) <= KEEP * KEEP,
+                    _ => true,
                 };
-                let mut spots = spots(candidate, width).into_iter();
-                let spot = match last {
-                    Some(&last) if keep => spots
-                        .find(|&spot| squared(spot, last) <= KEEP * KEEP && fits(spot, past_edge)),
-                    _ => spots.find(|&spot| fits(spot, screen)),
+                let area = if keep { past_edge } else { screen };
+                let fits = |layout: &Layout| {
+                    inside(layout.collider.bounds, area)
+                        && !taken.iter().any(|other| layout.collider.overlaps(other))
                 };
-                let Some((x, y)) = spot else {
+                let mut paths = HashMap::new();
+                let Some(((x, y), layout)) = spots(candidate, size)
+                    .filter(|&(at, _)| near(at))
+                    .find_map(|(at, spot)| {
+                        let layout = layout(candidate, size, at, spot, &mut paths)?;
+                        fits(&layout).then_some((at, layout))
+                    })
+                else {
                     continue;
                 };
-                taken.push(around((x, y), width, height));
+                taken.push(layout.collider);
                 texts.insert(label.text.as_str());
                 placed.push(Placed {
                     text: &label.text,
                     class: label.class,
                     x,
                     y,
+                    runs: layout.runs,
                     kept: keep,
                 });
             }
@@ -182,29 +187,176 @@ pub fn place<'a>(
     placed
 }
 
-/// The centers to try for a label: its point, or the anchors of its lines that the zoom shows and
-/// that have room for the text, middles first.
-fn spots(candidate: &Candidate, width: f64) -> Vec<ScreenPoint> {
-    let placement = &candidate.placement;
-    match candidate.label.anchor {
-        Anchor::Point(point) => vec![to_screen(placement, point)],
-        Anchor::Lines(_) => {
-            let mut anchors: Vec<_> = candidate
+/// Whether `label` is on a line, so that it needs the clusters of its [`Size`].
+#[must_use]
+pub fn on_line(label: &LabelCandidate) -> bool {
+    matches!(label.anchor, Anchor::Lines(_))
+}
+
+/// The width and height of a label text, and the width of each of its grapheme clusters, in CSS
+/// pixels. A label on a line needs the clusters.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Size {
+    width: f64,
+    height: f64,
+    clusters: Vec<Cluster>,
+    right_to_left: bool,
+}
+
+impl Size {
+    /// `width_of` gives the width of a text, or `None` if it cannot. A cluster gets the width of
+    /// the text up to its end, less the width of the text before it. So the widths include the
+    /// kerning and the joined letter forms of the whole text.
+    pub fn measure(
+        text: &str,
+        height: f64,
+        mut width_of: impl FnMut(&str) -> Option<f64>,
+    ) -> Option<Self> {
+        let mut before = 0.0;
+        let clusters = text
+            .grapheme_indices(true)
+            .map(|(start, cluster)| {
+                let end = start + cluster.len();
+                let to_end = width_of(&text[..end])?;
+                let width = (to_end - before).max(0.0);
+                before = to_end;
+                Some(Cluster {
+                    range: start..end,
+                    width,
+                    right_to_left: false,
+                })
+            })
+            .collect::<Option<Vec<_>>>()?;
+        let (right_to_left, clusters) = line_text::in_visual_order(text, clusters);
+        Some(Self {
+            width: clusters.iter().map(|cluster| cluster.width).sum(),
+            height,
+            clusters,
+            right_to_left,
+        })
+    }
+
+    /// The size of a `text` that is `width` wide, without its clusters, for a label at a point.
+    #[must_use]
+    pub fn of_point(text: &str, width: f64, height: f64) -> Self {
+        Self {
+            width,
+            height,
+            clusters: Vec::new(),
+            right_to_left: line_text::is_right_to_left(text),
+        }
+    }
+}
+
+/// How a label draws at a spot, and what it covers.
+struct Layout {
+    runs: Vec<Run>,
+    collider: Collider,
+}
+
+/// The boxes that a label covers, with padding, and the box around them.
+struct Collider {
+    bounds: Rect,
+    boxes: Vec<Rect>,
+}
+
+impl Collider {
+    fn new(boxes: Vec<Rect>) -> Self {
+        let bounds = boxes.iter().fold(
+            Rect {
+                left: f64::INFINITY,
+                top: f64::INFINITY,
+                right: f64::NEG_INFINITY,
+                bottom: f64::NEG_INFINITY,
+            },
+            |all, rect| Rect {
+                left: all.left.min(rect.left),
+                top: all.top.min(rect.top),
+                right: all.right.max(rect.right),
+                bottom: all.bottom.max(rect.bottom),
+            },
+        );
+        Self { bounds, boxes }
+    }
+
+    fn overlaps(&self, other: &Self) -> bool {
+        overlaps(self.bounds, other.bounds)
+            && self
+                .boxes
+                .iter()
+                .any(|&rect| other.boxes.iter().any(|&each| overlaps(rect, each)))
+    }
+}
+
+/// An anchor of a label on a line, with the points of that line in tile fractions.
+#[derive(Clone, Copy)]
+struct LineSpot<'c> {
+    anchor: &'c LineAnchor,
+    line: &'c [[f32; 2]],
+}
+
+/// The positions to try for a label: its point, or the anchors of its lines that the zoom shows
+/// and that have room for the text, middles first.
+fn spots<'c>(
+    candidate: &'c Candidate,
+    size: &Size,
+) -> impl Iterator<Item = (ScreenPoint, Option<LineSpot<'c>>)> {
+    let placement = candidate.placement;
+    let mut spots: Vec<_> = match &candidate.label.anchor {
+        &Anchor::Point(point) => vec![(to_screen(&placement, point), None)],
+        Anchor::Lines(lines) => {
+            let on_screen = |tile_widths: f32| f64::from(tile_widths) * placement.size;
+            candidate
                 .anchors
                 .iter()
                 .filter(|anchor| {
-                    let on_screen = |tile_widths: f32| f64::from(tile_widths) * placement.size;
                     (anchor.level == 0 || on_screen(anchor.spacing) >= SPACING)
-                        && on_screen(anchor.room) >= width
+                        && on_screen(anchor.room) >= size.width
                 })
-                .collect();
-            anchors.sort_by_key(|anchor| anchor.level);
-            anchors
-                .into_iter()
-                .map(|anchor| to_screen(placement, anchor.at))
+                .filter_map(|anchor| {
+                    let line = lines.get(anchor.line)?.points();
+                    Some((
+                        to_screen(&placement, anchor.at),
+                        Some(LineSpot { anchor, line }),
+                    ))
+                })
                 .collect()
         }
-    }
+    };
+    spots.sort_by_key(|(_, spot)| spot.map(|spot| spot.anchor.level));
+    spots.into_iter()
+}
+
+/// The label of `candidate` at `at`, or `None` if it does not fit on its line there. `paths`
+/// keeps the lines of the candidate on the screen, by index, for its next spots.
+fn layout(
+    candidate: &Candidate,
+    size: &Size,
+    at: ScreenPoint,
+    spot: Option<LineSpot>,
+    paths: &mut HashMap<usize, Path>,
+) -> Option<Layout> {
+    let Some(LineSpot { anchor, line }) = spot else {
+        return Some(Layout {
+            runs: vec![Run::level(&candidate.label.text, size.right_to_left)],
+            collider: Collider::new(vec![around(at, size.width, size.height)]),
+        });
+    };
+    let placement = candidate.placement;
+    let path = paths
+        .entry(anchor.line)
+        .or_insert_with(|| Path::new(line.iter().map(|&point| to_screen(&placement, point))));
+    let laid = line_text::lay_out(
+        path,
+        f64::from(anchor.along) * placement.size,
+        &size.clusters,
+        size.height,
+        size.right_to_left,
+    )?;
+    Some(Layout {
+        runs: laid.runs,
+        collider: Collider::new(laid.boxes.into_iter().map(padded).collect()),
+    })
 }
 
 fn squared(a: ScreenPoint, b: ScreenPoint) -> f64 {
@@ -212,11 +364,20 @@ fn squared(a: ScreenPoint, b: ScreenPoint) -> f64 {
 }
 
 fn around((x, y): ScreenPoint, width: f64, height: f64) -> Rect {
+    padded(Rect {
+        left: x - width / 2.0,
+        top: y - height / 2.0,
+        right: x + width / 2.0,
+        bottom: y + height / 2.0,
+    })
+}
+
+fn padded(rect: Rect) -> Rect {
     Rect {
-        left: x - width / 2.0 - PADDING,
-        top: y - height / 2.0 - PADDING,
-        right: x + width / 2.0 + PADDING,
-        bottom: y + height / 2.0 + PADDING,
+        left: rect.left - PADDING,
+        top: rect.top - PADDING,
+        right: rect.right + PADDING,
+        bottom: rect.bottom + PADDING,
     }
 }
 
@@ -278,6 +439,16 @@ mod tests {
         tiles: &[(&PreparedTile, VisibleTile)],
         shown: &[(&str, ScreenPoint)],
     ) -> Vec<(String, f64, f64, bool)> {
+        place_with(tiles, shown, |label| {
+            (label.text.to_owned(), label.x, label.y, label.kept)
+        })
+    }
+
+    fn place_with<T>(
+        tiles: &[(&PreparedTile, VisibleTile)],
+        shown: &[(&str, ScreenPoint)],
+        map: impl FnMut(Placed) -> T,
+    ) -> Vec<T> {
         let anchors: Vec<Vec<Vec<LineAnchor>>> = tiles
             .iter()
             .map(|(tile, _)| tile.labels().iter().map(line_anchors).collect())
@@ -295,13 +466,22 @@ mod tests {
                         anchors,
                     })
             });
-        #[expect(clippy::cast_precision_loss, reason = "short test texts")]
-        let measure = |text: &str, _| Some((text.chars().count() as f64 * 10.0, 10.0));
         let shown = shown.iter().copied().collect();
-        place(candidates, Rect::screen(400.0, 400.0), &shown, measure)
-            .into_iter()
-            .map(|label| (label.text.to_owned(), label.x, label.y, label.kept))
-            .collect()
+        place(candidates, Rect::screen(400.0, 400.0), &shown, |label| {
+            if on_line(label) {
+                Size::measure(&label.text, 10.0, |text| Some(ten_per_char(text)))
+            } else {
+                Some(Size::of_point(&label.text, ten_per_char(&label.text), 10.0))
+            }
+        })
+        .into_iter()
+        .map(map)
+        .collect()
+    }
+
+    #[expect(clippy::cast_precision_loss, reason = "short test texts")]
+    fn ten_per_char(text: &str) -> f64 {
+        text.chars().count() as f64 * 10.0
     }
 
     fn labels(tiles: &[&PreparedTile]) -> Vec<(String, f64, f64)> {
@@ -318,6 +498,35 @@ mod tests {
             top: PLACEMENT.top + dy,
             ..PLACEMENT
         }
+    }
+
+    fn water(name: &str, geometry: Geometry) -> (Geometry, Vec<(&'static str, Value)>) {
+        (
+            geometry,
+            vec![
+                ("class", Value::String("lake".to_owned())),
+                ("name", Value::String(name.to_owned())),
+            ],
+        )
+    }
+
+    #[test]
+    fn line_label_fits_after_a_point_label_of_the_same_text_does_not() {
+        let cities = tile("place", vec![city("Monza", 200, 100)]);
+        let point = Geometry::Points(vec![Point { x: 200, y: 100 }]);
+        let line = Geometry::Lines(vec![vec![
+            Point { x: 50, y: 300 },
+            Point { x: 350, y: 300 },
+        ]]);
+        let lakes = tile(
+            "water_name",
+            vec![water("Mud Lake", point), water("Mud Lake", line)],
+        );
+        let texts: Vec<_> = labels(&[&cities, &lakes])
+            .into_iter()
+            .map(|(text, ..)| text)
+            .collect();
+        assert_eq!(texts, ["Monza", "Mud Lake"]);
     }
 
     #[test]
@@ -388,7 +597,7 @@ mod tests {
     fn road_label_moves_with_the_map() {
         let tile = tile(
             "transportation_name",
-            vec![road("Via Po", &[(-200, 50), (100, 50), (100, 350)])],
+            vec![road("Via Po", &[(-200, 50), (400, 50)])],
         );
         assert_eq!(labels(&[&tile]), [("Via Po".to_owned(), 100.0, 50.0)]);
         assert_eq!(
@@ -422,12 +631,58 @@ mod tests {
     }
 
     #[test]
+    fn road_label_over_a_sharp_corner_is_left_out() {
+        let tile = tile(
+            "transportation_name",
+            vec![road("Via Po", &[(-200, 50), (100, 50), (100, 350)])],
+        );
+        assert_eq!(labels(&[&tile]), []);
+    }
+
+    #[test]
+    fn road_label_turns_with_its_road() {
+        let tile = tile(
+            "transportation_name",
+            vec![road("Via Po", &[(0, 400), (400, 0)])],
+        );
+        let runs = place_with(&[(&tile, PLACEMENT)], &[], |label| label.runs);
+        assert_eq!(runs.len(), 1);
+        let angles: Vec<_> = runs[0].iter().map(|run| run.angle).collect();
+        assert_eq!(angles, [-std::f64::consts::FRAC_PI_4]);
+    }
+
+    #[test]
+    fn diagonal_road_label_leaves_room_beside_its_text() {
+        let place = tile("place", vec![city("Ab", 225, 225)]);
+        let road = tile(
+            "transportation_name",
+            vec![road("Via Po", &[(0, 400), (400, 0)])],
+        );
+        assert_eq!(labels(&[&place, &road]).len(), 2);
+    }
+
+    #[test]
     fn road_shorter_than_its_name_gets_no_label() {
         let tile = tile(
             "transportation_name",
             vec![road("Via Roma", &[(100, 100), (150, 100)])],
         );
         assert_eq!(labels(&[&tile]), []);
+    }
+
+    #[test]
+    fn cluster_widths_include_the_kerning_of_the_text() {
+        let kerned = |text: &str| Some(ten_per_char(text) - if text == "AV" { 3.0 } else { 0.0 });
+        let size = Size::measure("AV", 10.0, kerned).unwrap();
+        let widths: Vec<_> = size.clusters.iter().map(|cluster| cluster.width).collect();
+        assert_eq!((widths, size.width), (vec![10.0, 7.0], 17.0));
+    }
+
+    #[test]
+    fn text_width_is_the_sum_of_its_cluster_widths() {
+        let narrower = |text: &str| Some(if text == "AB" { 8.0 } else { 10.0 });
+        let size = Size::measure("AB", 10.0, narrower).unwrap();
+        assert_eq!(size.width, 10.0);
     }
 
     #[test]

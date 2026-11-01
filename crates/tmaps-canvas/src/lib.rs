@@ -4,6 +4,7 @@
 mod cache;
 mod fade;
 mod labels;
+mod line_text;
 mod paint;
 mod raster;
 mod tile;
