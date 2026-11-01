@@ -1,6 +1,8 @@
 [package]
 name = "tmaps-braille"
 description = "Draws tmaps scenes as braille dots and colored terminal cells"
+keywords = ["openstreetmap", "maps", "braille", "terminal", "vector-tiles"]
+categories = ["science::geo", "rendering", "command-line-utilities"]
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
