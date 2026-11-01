@@ -27,7 +27,7 @@ tempfile = "3"
 terminal-colorsaurus = "1"
 textwrap = "0.16"
 thiserror = "2"
-tmaps-core = { version = "0.1.0", path = "../tmaps-core" }
+tmaps-core = { version = "0.2.0", path = "../tmaps-core" }
 tokio = { version = "1", features = ["macros", "rt", "sync", "time"] }
 toml = "1"
 toml_edit = "0.25"
