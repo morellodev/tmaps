@@ -27,8 +27,8 @@ tempfile = "3"
 terminal-colorsaurus = "1"
 textwrap = "0.16"
 thiserror = "2"
-tmaps-braille = { version = "0.1.0", path = "../tmaps-braille" }
-tmaps-core = { version = "0.1.0", path = "../tmaps-core" }
+tmaps-braille = { version = "0.2.0", path = "../tmaps-braille" }
+tmaps-core = { version = "0.2.0", path = "../tmaps-core" }
 tokio = { version = "1", features = ["macros", "rt", "sync", "time"] }
 toml = "1"
 toml_edit = "0.25"
@@ -41,6 +41,6 @@ workspace = true
 [dev-dependencies]
 assert_cmd = "2"
 jsonschema = "0.60"
-tmaps-core = { version = "0.1.0", path = "../tmaps-core", features = ["test-util"] }
+tmaps-core = { version = "0.2.0", path = "../tmaps-core", features = ["test-util"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "test-util"] }
 wiremock = "0.6"
